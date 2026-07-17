@@ -1,6 +1,21 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Auto-detect backend URL for LAN/desktop deployment:
+// - If REACT_APP_BACKEND_URL is set at build time → use it (cloud/preview mode)
+// - Else fallback to same host as browser current location (LAN/desktop mode)
+//   e.g. http://192.168.1.10:8001 when accessed from another device
+function resolveBackendUrl() {
+  const envUrl = process.env.REACT_APP_BACKEND_URL;
+  if (envUrl && envUrl.length > 0) return envUrl;
+  if (typeof window !== "undefined" && window.location) {
+    const host = window.location.hostname;
+    // Backend runs on port 8001 in desktop/LAN mode
+    return `${window.location.protocol}//${host}:8001`;
+  }
+  return "http://localhost:8001";
+}
+
+const BACKEND_URL = resolveBackendUrl();
 export const API = `${BACKEND_URL}/api`;
 
 const api = axios.create({

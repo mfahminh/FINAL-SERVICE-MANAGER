@@ -1,9 +1,11 @@
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "react-barcode";
-import { Printer } from "lucide-react";
+import { Printer, Usb } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import PrintStyle from "@/components/PrintStyle";
 import { useBranding } from "@/context/BrandingContext";
+import { sendRaw, buildServiceLabel } from "@/lib/escpos";
 
 export default function ServiceLabel({ service, shopName = "Service HP", trackingBase }) {
   const { settings } = useBranding();
@@ -11,6 +13,16 @@ export default function ServiceLabel({ service, shopName = "Service HP", trackin
   const imeiTail = service.imei1 ? service.imei1.slice(-4) : "----";
   const title = settings?.label_header_title || settings?.print_header_title || shopName;
   const footer = settings?.label_footer_text;
+
+  const usbPrintLabel = async () => {
+    try {
+      await sendRaw(buildServiceLabel(service, settings, trackUrl));
+      toast.success("Label terkirim ke printer USB");
+    } catch (e) {
+      toast.error(e.message || "Gagal print USB");
+    }
+  };
+
   return (
     <div className="space-y-3">
       <PrintStyle targetId="label-print" kind="label" />
@@ -32,7 +44,10 @@ export default function ServiceLabel({ service, shopName = "Service HP", trackin
         </div>
         {footer && <div className="text-center text-[9px] text-zinc-500 mt-1.5 border-t border-zinc-300 pt-1">{footer}</div>}
       </div>
-      <Button onClick={() => window.print()} className="w-full gap-2 no-print" data-testid="print-label-btn"><Printer className="size-4" />Cetak Label</Button>
+      <div className="grid grid-cols-2 gap-2 no-print">
+        <Button onClick={() => window.print()} className="gap-2" data-testid="print-label-btn"><Printer className="size-4" />Cetak Biasa</Button>
+        <Button variant="outline" onClick={usbPrintLabel} className="gap-2" data-testid="print-label-usb-btn" title="Print thermal via USB ESC/POS"><Usb className="size-4" />USB</Button>
+      </div>
     </div>
   );
 }

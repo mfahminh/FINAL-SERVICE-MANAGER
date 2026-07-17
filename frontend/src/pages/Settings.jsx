@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send, Ruler } from "lucide-react";
+import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send, Ruler, Usb } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { pickPrinter, getSavedPrinterInfo, clearSavedPrinter, sendRaw, buildPOSReceipt, buildServiceIntakeReceipt } from "@/lib/escpos";
 
 export default function Settings() {
   const [s, setS] = useState(null);
@@ -26,6 +27,27 @@ export default function Settings() {
   const [resetLoading, setResetLoading] = useState(false);
   const [waTestPhone, setWaTestPhone] = useState("");
   const [waTesting, setWaTesting] = useState(false);
+  const [usbInfo, setUsbInfo] = useState(getSavedPrinterInfo());
+  const [usbSupported] = useState(typeof navigator !== "undefined" && !!navigator.usb);
+
+  const pickUsbPrinter = async () => {
+    try {
+      const dev = await pickPrinter();
+      setUsbInfo({ vendorId: dev.vendorId, productId: dev.productId, productName: dev.productName, manufacturerName: dev.manufacturerName });
+      toast.success(`Printer terpilih: ${dev.productName || "Unknown"}`);
+    } catch (e) { toast.error(e.message || "Gagal memilih printer"); }
+  };
+  const testUsbPrint = async () => {
+    try {
+      await sendRaw(buildPOSReceipt({
+        sale_number: "TEST-001", created_at: new Date().toISOString(),
+        items: [{ name: "Test Printer", qty: 1, price: 1000 }],
+        total: 1000, paid: 1000,
+      }, s));
+      toast.success("Test print terkirim");
+    } catch (e) { toast.error(e.message || "Gagal test print"); }
+  };
+  const forgetUsbPrinter = () => { clearSavedPrinter(); setUsbInfo(null); toast.info("Printer USB dihapus dari memori"); };
 
   const doWaTest = async () => {
     if (!waTestPhone) return toast.error("Isi nomor HP dulu");
@@ -252,6 +274,61 @@ export default function Settings() {
             <li>Kalau tetap 2 halaman, kurangi Font Size ke 8pt atau Line Height ke 1.1</li>
             <li>Chrome/Edge → <b>More settings → Paper size → Pilih ukuran custom</b> (kalau printer thermal tidak muncul default)</li>
           </ul>
+        </div>
+
+        {/* USB Direct Print */}
+        <div className="border-t border-border pt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Usb className="size-5 text-primary" />
+            <h4 className="font-display font-bold text-base">Direct USB Print (ESC/POS)</h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Print langsung ke printer thermal via kabel USB — tanpa dialog print browser, tanpa driver. Cepat & konsisten.
+            Butuh Chrome/Edge di Windows/Mac/Linux. Colok printer, klik "Pilih Printer" satu kali, izinkan di popup Chrome.
+          </p>
+          {!usbSupported ? (
+            <div className="text-xs bg-yellow-500/10 border border-yellow-500/30 text-yellow-800 dark:text-yellow-300 p-3 rounded-md">
+              Browser ini tidak support Web USB. Pakai <b>Chrome/Edge</b> desktop. Untuk HP/tablet, gunakan tombol Cetak biasa.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {usbInfo ? (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-md text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-emerald-800 dark:text-emerald-300 text-xs uppercase">Terhubung</div>
+                      <div className="text-sm font-medium">{usbInfo.productName || "Unknown printer"}</div>
+                      <div className="text-[10px] font-mono text-muted-foreground">
+                        VID: {usbInfo.vendorId?.toString(16).padStart(4, "0")} · PID: {usbInfo.productId?.toString(16).padStart(4, "0")}
+                        {usbInfo.manufacturerName && ` · ${usbInfo.manufacturerName}`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-muted border border-border rounded-md text-xs text-muted-foreground">
+                  Belum ada printer USB terpilih.
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <Button variant="outline" onClick={pickUsbPrinter} className="gap-2" data-testid="usb-pick-btn">
+                  <Usb className="size-4" />
+                  {usbInfo ? "Ganti Printer" : "Pilih Printer USB"}
+                </Button>
+                <Button variant="secondary" onClick={testUsbPrint} disabled={!usbInfo} className="gap-2" data-testid="usb-test-btn">
+                  <Printer className="size-4" />Test Print
+                </Button>
+                {usbInfo && (
+                  <Button variant="ghost" onClick={forgetUsbPrinter} className="gap-2 text-muted-foreground" data-testid="usb-forget-btn">
+                    <Trash2 className="size-4" />Lupakan
+                  </Button>
+                )}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                💡 <b>Tips</b>: Kalau muncul "no device", pastikan driver <b>USB Printing Support</b> aktif di Device Manager, atau install driver generic (Zadig di Windows) untuk expose USB endpoint ke browser.
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 

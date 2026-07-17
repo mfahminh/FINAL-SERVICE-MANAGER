@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
 import PrintStyle from "@/components/PrintStyle";
+import { sendRaw, buildFinalServiceNota, buildServiceIntakeReceipt } from "@/lib/escpos";
 import { QC_CHECKLIST, QC_ITEMS_FLAT } from "@/constants/qcChecklist";
 
 export default function ServiceDetail() {
@@ -48,6 +49,16 @@ export default function ServiceDetail() {
   const [qcNotes, setQcNotes] = useState({});
   const [qcOverall, setQcOverall] = useState("");
   const [notaFinalOpen, setNotaFinalOpen] = useState(false);
+
+  const usbPrint = async (builderFn) => {
+    try {
+      const bytesData = builderFn();
+      await sendRaw(bytesData);
+      toast.success("Terkirim ke printer USB");
+    } catch (e) {
+      toast.error(e.message || "Gagal print via USB");
+    }
+  };
 
   const canEditFee = user?.role === "owner" || user?.role === "admin";
   const canCancelPart = ["owner", "admin", "teknisi"].includes(user?.role);
@@ -282,7 +293,10 @@ export default function ServiceDetail() {
                 <div className="text-xs mt-2">Estimasi: {fmtIDR(svc.estimated_cost)}</div>
                 <div className="text-[10px] text-zinc-500 mt-3">Scan untuk tracking status</div>
               </div>
-              <Button onClick={() => window.print()} className="w-full gap-2"><Printer className="size-4" />Cetak</Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button onClick={() => window.print()} className="gap-2" data-testid="qr-print-btn"><Printer className="size-4" />Cetak Biasa</Button>
+                <Button variant="outline" onClick={() => usbPrint(() => buildServiceIntakeReceipt(svc, settings, trackUrl))} className="gap-2" data-testid="qr-usb-print-btn" title="Print langsung via USB (ESC/POS)"><Printer className="size-4" />USB</Button>
+              </div>
             </DialogContent>
           </Dialog>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => sendWA("diagnose")} data-testid="send-wa-btn"><Send className="size-4" />Kirim WA</Button>
@@ -1002,7 +1016,8 @@ export default function ServiceDetail() {
           </div>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" onClick={() => setNotaFinalOpen(false)} className="flex-1" data-testid="nota-final-close">Tutup</Button>
-            <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="nota-final-print"><Printer className="size-4" />Cetak</Button>
+            <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="nota-final-print"><Printer className="size-4" />Cetak Biasa</Button>
+            <Button variant="secondary" onClick={() => usbPrint(() => buildFinalServiceNota(svc, settings))} className="flex-1 gap-2" data-testid="nota-final-usb-print" title="Print langsung via USB (ESC/POS thermal)"><Printer className="size-4" />USB</Button>
           </div>
         </DialogContent>
       </Dialog>

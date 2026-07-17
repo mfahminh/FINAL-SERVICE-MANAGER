@@ -76,11 +76,25 @@ export default function PrintStyle({ targetId, kind = "nota" }) {
           font-size: ${fontSize}pt !important;
           line-height: ${lineH} !important;
           box-shadow: none !important;
+          overflow: visible !important;
           ${hideBorders ? "border: 0 !important;" : ""}
         }
         #${targetId} * {
           box-shadow: none !important;
+          max-width: 100% !important;
+          overflow: visible !important;
+          word-wrap: break-word !important;
+          overflow-wrap: anywhere !important;
+          word-break: break-word !important;
           ${hideBorders ? "border-color: transparent !important;" : ""}
+        }
+        /* Kill fixed max-w constraints on nested elements (mis. max-w-[60%]) */
+        #${targetId} [class*="max-w-"] { max-width: 100% !important; }
+        /* Truncate hilang saat print supaya text lengkap */
+        #${targetId} .truncate {
+          overflow: visible !important;
+          white-space: normal !important;
+          text-overflow: unset !important;
         }
         /* Tighten common spacing */
         #${targetId} .p-5, #${targetId} .p-4 { padding: 2mm !important; }
@@ -89,13 +103,43 @@ export default function PrintStyle({ targetId, kind = "nota" }) {
         #${targetId} .mt-3, #${targetId} .mt-4 { margin-top: 1.5mm !important; }
         #${targetId} .space-y-1 > * + * { margin-top: 0.5mm !important; }
         #${targetId} .space-y-2 > * + * { margin-top: 1mm !important; }
-        /* Ensure no page break inside receipt */
-        #${targetId} { page-break-inside: avoid; break-inside: avoid; }
-        #${targetId} table, #${targetId} tr, #${targetId} td { page-break-inside: avoid; break-inside: avoid; }
+        /* Flex row → wrap when narrow, tapi tetap right-align angka */
+        #${targetId} .flex.justify-between {
+          display: flex !important;
+          flex-wrap: nowrap !important;
+          gap: 2mm !important;
+        }
+        #${targetId} .flex.justify-between > *:last-child {
+          text-align: right !important;
+          flex-shrink: 0 !important;
+          max-width: 60% !important;
+        }
+        #${targetId} .flex.justify-between > *:first-child {
+          flex: 1 !important;
+          min-width: 0 !important;
+        }
+        /* Grid 2-kolom (mis. QC list) → 1 kolom di kertas narrow (<80mm) */
+        ${!isA4 && paperWidth.replace("mm", "") && Number(paperWidth.replace("mm", "")) <= 58 ? `
+          #${targetId} .grid.grid-cols-2 {
+            grid-template-columns: 1fr !important;
+          }
+        ` : `
+          #${targetId} .grid.grid-cols-2 {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 1mm !important;
+          }
+        `}
+        /* Ensure no page break inside receipt for thermal auto-height */
+        ${isA4 ? "" : `
+          #${targetId} { page-break-inside: auto; break-inside: auto; }
+          #${targetId} .p-5, #${targetId} .p-4, #${targetId} .p-3 { padding-left: 1mm !important; padding-right: 1mm !important; }
+        `}
         /* Kill any element with .no-print */
         .no-print, .no-print * { display: none !important; }
         /* Compact QR + Barcode to fit thermal */
         #${targetId} svg { max-width: 100% !important; height: auto !important; }
+        /* Font-mono jangan pakai variable width */
+        #${targetId} .font-mono { font-family: ${family} !important; }
       }
     `;
 

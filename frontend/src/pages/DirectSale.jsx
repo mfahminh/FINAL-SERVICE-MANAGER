@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { ShoppingCart, Search, Plus, Minus, Trash2, Receipt, Printer, Package } from "lucide-react";
 import { useBranding } from "@/context/BrandingContext";
 import PrintStyle from "@/components/PrintStyle";
+import { sendRaw, buildPOSReceipt } from "@/lib/escpos";
 
 export default function DirectSale() {
   const { settings } = useBranding();
@@ -299,7 +300,15 @@ export default function DirectSale() {
           )}
           <div className="flex gap-2 mt-2">
             <Button variant="outline" onClick={() => setReceiptOpen(false)} className="flex-1" data-testid="ds-receipt-close">Tutup</Button>
-            <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="ds-receipt-print"><Printer className="size-4" />Cetak</Button>
+            <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="ds-receipt-print"><Printer className="size-4" />Cetak Biasa</Button>
+            <Button variant="secondary" className="flex-1 gap-2" data-testid="ds-receipt-usb-print"
+              onClick={async () => {
+                try { await sendRaw(buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke USB"); }
+                catch (e) { toast.error(e.message || "Gagal print USB"); }
+              }}
+              title="Print thermal via USB ESC/POS">
+              <Printer className="size-4" />USB
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
