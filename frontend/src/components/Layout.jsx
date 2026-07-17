@@ -1,32 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, NavLink, useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import {
   LayoutDashboard, Users, Smartphone, Package, Truck, ShoppingCart,
   Receipt, FileBarChart2, ScrollText, Settings, LogOut, Sun, Moon,
-  Menu, X, Search, ShieldCheck, Wrench, HardHat, Briefcase, Wallet
+  Menu, X, Search, ShieldCheck, Wrench, HardHat, Briefcase, Wallet, Bell
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import api, { maskPhone } from "@/lib/api";
 import { useBranding } from "@/context/BrandingContext";
 
 const ALL_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["owner", "admin", "teknisi", "kasir"] },
-  { to: "/services", label: "Service", icon: Smartphone, roles: ["owner", "admin", "teknisi", "kasir"] },
-  { to: "/my-jobs", label: "Pekerjaan Saya", icon: Briefcase, roles: ["teknisi", "owner", "admin"] },
-  { to: "/qc", label: "Quality Control", icon: ShieldCheck, roles: ["owner", "admin"] },
+  { to: "/services", label: "Service", icon: Smartphone, roles: ["owner", "admin", "teknisi", "kasir"], notifKey: "services" },
+  { to: "/my-jobs", label: "Pekerjaan Saya", icon: Briefcase, roles: ["teknisi", "owner", "admin"], notifKey: "my-jobs" },
+  { to: "/qc", label: "Quality Control", icon: ShieldCheck, roles: ["owner", "admin"], notifKey: "qc" },
   { to: "/customers", label: "Pelanggan", icon: Users, roles: ["owner", "admin", "kasir"] },
   { to: "/technicians", label: "Teknisi", icon: HardHat, roles: ["owner", "admin"] },
-  { to: "/spareparts", label: "Sparepart", icon: Package, roles: ["owner", "admin", "teknisi"] },
+  { to: "/spareparts", label: "Sparepart", icon: Package, roles: ["owner", "admin", "teknisi"], notifKey: "spareparts" },
   { to: "/direct-sale", label: "Direct Sale", icon: Receipt, roles: ["owner", "admin", "kasir"] },
   { to: "/suppliers", label: "Supplier", icon: Truck, roles: ["owner", "admin"] },
   { to: "/purchases", label: "Pembelian", icon: ShoppingCart, roles: ["owner", "admin"] },
-  { to: "/payments", label: "Pembayaran", icon: Receipt, roles: ["owner", "admin", "kasir"] },
+  { to: "/payments", label: "Pembayaran", icon: Receipt, roles: ["owner", "admin", "kasir"], notifKey: "payments" },
   { to: "/financial", label: "Keuangan", icon: Wallet, roles: ["owner", "admin"] },
   { to: "/reports", label: "Laporan", icon: FileBarChart2, roles: ["owner", "admin"] },
-  { to: "/approvals", label: "Persetujuan User", icon: ShieldCheck, roles: ["owner"] },
+  { to: "/approvals", label: "Persetujuan User", icon: ShieldCheck, roles: ["owner"], notifKey: "approvals" },
   { to: "/users", label: "Users", icon: ShieldCheck, roles: ["owner", "admin"] },
   { to: "/audit", label: "Audit Log", icon: ScrollText, roles: ["owner", "admin"] },
   { to: "/settings", label: "Pengaturan", icon: Settings, roles: ["owner", "admin"] },
@@ -41,6 +42,26 @@ export default function Layout() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState({ customers: [], services: [] });
+  const [notif, setNotif] = useState({});
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await api.get("/notifications/counts");
+        if (alive) setNotif(r.data || {});
+      } catch (e) { /* ignore */ }
+    };
+    load();
+    const t = setInterval(load, 30000); // refresh tiap 30 detik
+    // refresh on window focus
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => { alive = false; clearInterval(t); window.removeEventListener("focus", onFocus); };
+  }, [user]);
+
+  const totalNotif = Object.entries(notif).reduce((acc, [k, v]) => k !== "ready_pickup" ? acc + (Number(v) || 0) : acc, 0);
 
   const nav = ALL_NAV.filter((n) => n.roles.includes(user?.role));
 
@@ -73,6 +94,7 @@ export default function Layout() {
         <nav className="p-3 space-y-1">
           {nav.map((item) => {
             const Icon = item.icon;
+            const count = item.notifKey ? (notif[item.notifKey] || 0) : 0;
             return (
               <NavLink
                 key={item.to}
@@ -87,7 +109,16 @@ export default function Layout() {
                 }
               >
                 <Icon className="size-4" strokeWidth={1.75} />
-                {item.label}
+                <span className="flex-1 truncate">{item.label}</span>
+                {count > 0 && (
+                  <span
+                    data-testid={`sidebar-badge-${item.notifKey}`}
+                    className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none tabular-nums shadow-sm ring-2 ring-card"
+                    title={`${count} butuh tindakan`}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
               </NavLink>
             );
           })}
@@ -150,6 +181,66 @@ export default function Layout() {
               </div>
             )}
           </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative" data-testid="notif-bell-btn" title="Notifikasi">
+                <Bell className="size-4" />
+                {totalNotif > 0 && (
+                  <span
+                    data-testid="notif-total-badge"
+                    className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none tabular-nums ring-2 ring-background"
+                  >
+                    {totalNotif > 99 ? "99+" : totalNotif}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0" data-testid="notif-popover">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div>
+                  <div className="font-display font-bold text-sm">Perlu Ditindaklanjuti</div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total {totalNotif} item</div>
+                </div>
+                <Bell className="size-4 text-primary" />
+              </div>
+              <div className="max-h-80 overflow-auto">
+                {[
+                  { key: "services", label: "Service baru / persetujuan", to: "/services" },
+                  { key: "my-jobs", label: user?.role === "teknisi" ? "Pekerjaan aktif Anda" : "Service belum di-assign", to: "/my-jobs" },
+                  { key: "qc", label: "Antrian Quality Control", to: "/qc" },
+                  { key: "payments", label: "Pembayaran belum lunas", to: "/payments" },
+                  { key: "spareparts", label: "Sparepart stok menipis", to: "/spareparts" },
+                  { key: "approvals", label: "Persetujuan user pending", to: "/approvals" },
+                  { key: "ready_pickup", label: "Siap diambil (belum pickup)", to: "/services", subtle: true },
+                ].map((row) => {
+                  const c = notif[row.key] || 0;
+                  if (c === 0) return null;
+                  return (
+                    <button
+                      key={row.key}
+                      onClick={() => navigate(row.to)}
+                      data-testid={`notif-item-${row.key}`}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent border-b border-border/50 transition-colors text-left"
+                    >
+                      <span className="text-sm">{row.label}</span>
+                      <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-[11px] font-bold tabular-nums ${row.subtle ? "bg-primary/15 text-primary" : "bg-red-500 text-white"}`}>
+                        {c}
+                      </span>
+                    </button>
+                  );
+                })}
+                {totalNotif === 0 && (notif.ready_pickup || 0) === 0 && (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    <div className="inline-flex size-10 rounded-full bg-primary/10 text-primary items-center justify-center mb-2">
+                      <Bell className="size-5" />
+                    </div>
+                    <div>Semua sudah tertangani ✨</div>
+                    <div className="text-xs">Tidak ada item yang perlu tindakan.</div>
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="ghost" size="icon" onClick={toggle} data-testid="theme-toggle-btn">
             {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>

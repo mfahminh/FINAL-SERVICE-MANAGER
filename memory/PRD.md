@@ -149,3 +149,20 @@ Full-stack phone service business management app (Indonesian) covering intake �
 ### Frontend
 - Settings.jsx: Card baru "Notifikasi WhatsApp Otomatis" dengan token input, kode negara, switch Fonnte on/off, 4 toggle event, 4 textarea template, tombol Test Koneksi
 - ServiceDetail.jsx: tombol "Kirim WA" tetap ada — sekarang tampilkan provider aktual di toast (mock vs fonnte)
+
+## Feature (2026-07-17) — Sidebar Notification Badges
+### Backend
+- `GET /api/notifications/counts` — return dict per key sesuai role:
+  - `services`: menunggu teknisi (unassigned) + menunggu persetujuan
+  - `my-jobs`: teknisi → job aktif + qc_failed; owner/admin → unassigned services
+  - `qc`: antrian Quality Control
+  - `spareparts`: jumlah item low-stock
+  - `payments`: jumlah service dengan piutang (belum lunas & bukan dibatalkan/diambil)
+  - `approvals`: user change request pending (owner only)
+  - `ready_pickup`: info — Selesai belum diambil
+
+### Frontend (Layout.jsx)
+- Auto-fetch tiap 30 detik + on window focus
+- Badge merah bulat di setiap menu sidebar yang punya `notifKey` (Service, Pekerjaan Saya, QC, Sparepart, Pembayaran, Persetujuan User)
+- Bell icon di header dengan **total badge** + popover breakdown per kategori dengan klik navigasi ke halaman
+- Empty state di popover ("Semua sudah tertangani ✨") saat tidak ada notifikasi

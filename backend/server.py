@@ -2291,6 +2291,82 @@ async def whatsapp_logs(service_id: Optional[str] = None, limit: int = 100,
     items = await db.wa_logs.find(q, {"_id": 0}).sort("sent_at", -1).to_list(limit)
     return items
 
+# ---------- NOTIFICATIONS (sidebar badge counts) ----------
+@api.get("/notifications/counts")
+async def notifications_counts(user: dict = Depends(get_current_user)):
+    """Kembalikan jumlah item yang butuh tindakan per menu, sesuai role."""
+    role = user.get("role")
+    out = {}
+
+    # Service: menunggu teknisi belum di-assign + menunggu persetujuan
+    if role in ("owner", "admin", "kasir"):
+        waiting_tech = await db.services.count_documents({
+            "status": "Menunggu Teknisi", "assigned_technician_id": None
+        })
+        waiting_approval = await db.services.count_documents({"status": "Menunggu Persetujuan"})
+        out["services"] = waiting_tech + waiting_approval
+    else:
+        out["services"] = 0
+
+    # Pekerjaan Saya (teknisi): jumlah service assigned + qc_failed
+    if role == "teknisi":
+        tech = await db.technicians.find_one({"user_id": user["id"]})
+        if tech:
+            my_active = await db.services.count_documents({
+                "assigned_technician_id": tech["id"],
+                "status": {"$in": ["Sedang Dikerjakan", "Menunggu Sparepart", "Menunggu Persetujuan"]},
+            })
+            qc_failed = await db.services.count_documents({
+                "assigned_technician_id": tech["id"],
+                "qc_failed": True, "status": {"$ne": "Sudah Diambil"}
+            })
+            out["my-jobs"] = my_active + qc_failed
+        else:
+            out["my-jobs"] = 0
+    elif role in ("owner", "admin"):
+        # untuk owner/admin di menu Pekerjaan Saya: jumlah service unassigned overall
+        out["my-jobs"] = await db.services.count_documents({
+            "status": "Menunggu Teknisi", "assigned_technician_id": None
+        })
+    else:
+        out["my-jobs"] = 0
+
+    # Quality Control
+    if role in ("owner", "admin"):
+        out["qc"] = await db.services.count_documents({"status": "Quality Control"})
+    else:
+        out["qc"] = 0
+
+    # Sparepart: low stock
+    if role in ("owner", "admin", "teknisi"):
+        sp = await db.spareparts.find({}, {"stock": 1, "min_stock": 1, "_id": 0}).to_list(5000)
+        low = sum(1 for s in sp if (s.get("stock", 0) or 0) <= (s.get("min_stock", 0) or 0))
+        out["spareparts"] = low
+    else:
+        out["spareparts"] = 0
+
+    # Pembayaran: service belum lunas & belum dibatalkan/diambil (piutang)
+    if role in ("owner", "admin", "kasir"):
+        svcs = await db.services.find(
+            {"status": {"$nin": ["Dibatalkan", "Sudah Diambil"]}},
+            {"final_cost": 1, "total_paid": 1, "_id": 0},
+        ).to_list(2000)
+        piutang = sum(1 for s in svcs if (s.get("final_cost", 0) or 0) - (s.get("total_paid", 0) or 0) > 0)
+        out["payments"] = piutang
+    else:
+        out["payments"] = 0
+
+    # Persetujuan User (owner only): request pending
+    if role == "owner":
+        out["approvals"] = await db.user_change_requests.count_documents({"status": "pending"})
+    else:
+        out["approvals"] = 0
+
+    # Selesai tapi belum diambil (info untuk Dashboard / stat generik)
+    out["ready_pickup"] = await db.services.count_documents({"status": "Selesai"})
+
+    return out
+
 # ---------- Seed ----------
 async def seed():
     await db.users.create_index("email", unique=True)
