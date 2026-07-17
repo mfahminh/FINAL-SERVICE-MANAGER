@@ -10,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send } from "lucide-react";
+import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send, Ruler } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function Settings() {
   const [s, setS] = useState(null);
@@ -129,6 +130,129 @@ export default function Settings() {
         </div>
         <div><Label>Alamat</Label><Textarea rows={2} value={s.address || ""} onChange={(e) => setS({ ...s, address: e.target.value })} /></div>
         <div><Label>Template WhatsApp</Label><Textarea rows={3} value={s.wa_template || ""} onChange={(e) => setS({ ...s, wa_template: e.target.value })} placeholder="Halo {nama}, service {nomor} ..." /></div>
+      </Card>
+
+      {/* Thermal Printer Configuration */}
+      <Card className="p-5 border border-border space-y-4" data-testid="thermal-printer-card">
+        <div className="flex items-center gap-2">
+          <Ruler className="size-5 text-primary" />
+          <h3 className="font-display font-bold text-lg">Thermal Printer</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Atur ukuran kertas per jenis cetakan supaya <b>tidak overflow ke halaman berikutnya</b>.
+          Setingan ini otomatis mengatur <code className="text-[10px] px-1 bg-muted rounded">@page size</code> dan lebar konten saat kamu klik Cetak.
+          Untuk printer thermal 58mm/80mm, pilih ukuran yang sama; untuk kertas biasa pilih A4.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <Label>Nota (Struk Service & POS)</Label>
+            <Select value={s.printer_nota_width || "80mm"} onValueChange={(v) => setS({ ...s, printer_nota_width: v })}>
+              <SelectTrigger data-testid="printer-nota-width"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="58mm">58mm (thermal kecil)</SelectItem>
+                <SelectItem value="80mm">80mm (thermal standar)</SelectItem>
+                <SelectItem value="100mm">100mm (thermal lebar)</SelectItem>
+                <SelectItem value="A4">A4 (printer biasa)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Label Service Tag</Label>
+            <Select value={s.printer_label_width || "58mm"} onValueChange={(v) => setS({ ...s, printer_label_width: v })}>
+              <SelectTrigger data-testid="printer-label-width"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="40mm">40mm (label kecil)</SelectItem>
+                <SelectItem value="50mm">50mm</SelectItem>
+                <SelectItem value="58mm">58mm (default)</SelectItem>
+                <SelectItem value="80mm">80mm</SelectItem>
+                <SelectItem value="100mm">100mm</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>QR / Tanda Terima</Label>
+            <Select value={s.printer_qr_width || "58mm"} onValueChange={(v) => setS({ ...s, printer_qr_width: v })}>
+              <SelectTrigger data-testid="printer-qr-width"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="58mm">58mm</SelectItem>
+                <SelectItem value="80mm">80mm</SelectItem>
+                <SelectItem value="100mm">100mm</SelectItem>
+                <SelectItem value="A4">A4</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <Label>Margin (mm)</Label>
+            <Input type="number" step="0.5" min={0} max={20}
+              value={s.printer_margin_mm ?? 2}
+              onChange={(e) => setS({ ...s, printer_margin_mm: Number(e.target.value) })}
+              data-testid="printer-margin"
+            />
+          </div>
+          <div>
+            <Label>Gap Bawah (mm)</Label>
+            <Input type="number" step="0.5" min={0} max={20}
+              value={s.printer_gap_mm ?? 4}
+              onChange={(e) => setS({ ...s, printer_gap_mm: Number(e.target.value) })}
+              data-testid="printer-gap"
+              placeholder="Untuk area cutter"
+            />
+          </div>
+          <div>
+            <Label>Font Size (pt)</Label>
+            <Input type="number" step="0.5" min={6} max={14}
+              value={s.printer_font_size_pt ?? 9}
+              onChange={(e) => setS({ ...s, printer_font_size_pt: Number(e.target.value) })}
+              data-testid="printer-font-size"
+            />
+          </div>
+          <div>
+            <Label>Line Height</Label>
+            <Input type="number" step="0.05" min={1} max={2}
+              value={s.printer_line_height ?? 1.25}
+              onChange={(e) => setS({ ...s, printer_line_height: Number(e.target.value) })}
+              data-testid="printer-line-height"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>Font Family</Label>
+            <Select value={s.printer_font_family || "mono"} onValueChange={(v) => setS({ ...s, printer_font_family: v })}>
+              <SelectTrigger data-testid="printer-font-family"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mono">Monospace (Courier — cocok thermal)</SelectItem>
+                <SelectItem value="sans">Sans-serif (Modern)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50 border border-border">
+            <Switch
+              checked={s.printer_hide_borders !== false}
+              onCheckedChange={(v) => setS({ ...s, printer_hide_borders: v })}
+              data-testid="printer-hide-borders"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-sm">Sembunyikan Border saat Cetak</div>
+              <div className="text-xs text-muted-foreground">Hemat tinta thermal. Off jika pakai kertas biasa dengan garis kotak.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-xs text-muted-foreground p-3 bg-primary/5 border border-primary/20 rounded-md">
+          <div className="font-semibold text-foreground mb-1">Tips supaya print pas 1 halaman:</div>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>Pilih paper size yang <b>sama dengan printer thermal</b> Anda (biasanya 58mm atau 80mm)</li>
+            <li>Di dialog print browser, set <b>Margins = None/Minimum</b>, <b>Scale = 100%</b>, matikan Headers &amp; Footers</li>
+            <li>Kalau tetap 2 halaman, kurangi Font Size ke 8pt atau Line Height ke 1.1</li>
+            <li>Chrome/Edge → <b>More settings → Paper size → Pilih ukuran custom</b> (kalau printer thermal tidak muncul default)</li>
+          </ul>
+        </div>
       </Card>
 
       {/* WhatsApp Notifications (Fonnte) */}

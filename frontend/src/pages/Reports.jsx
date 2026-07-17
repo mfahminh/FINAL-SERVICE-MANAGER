@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, FileSpreadsheet, FileText, Printer, Receipt, Users, Wrench, Package, ShoppingCart, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import PrintStyle from "@/components/PrintStyle";
 
 const GROUP_LABELS = { item: "Per Item", day: "Per Hari", month: "Per Bulan" };
 
@@ -502,6 +503,7 @@ export default function Reports() {
 
             {slipData && (
               <div id="slip-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
+                {slipOpen && <PrintStyle targetId="slip-print" kind="nota" />}
                 <div className="text-center mb-3">
                   <div className="font-display font-black text-lg">{slipData.shop.name}</div>
                   {slipData.shop.address && <div className="text-[10px] text-zinc-500">{slipData.shop.address}</div>}

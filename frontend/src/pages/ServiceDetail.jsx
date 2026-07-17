@@ -16,6 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
+import PrintStyle from "@/components/PrintStyle";
 import { QC_CHECKLIST, QC_ITEMS_FLAT } from "@/constants/qcChecklist";
 
 export default function ServiceDetail() {
@@ -271,6 +272,7 @@ export default function ServiceDetail() {
             <DialogContent className="max-w-md">
               <DialogHeader><DialogTitle>Tanda Terima Service</DialogTitle></DialogHeader>
               <div id="receipt-print" className="border border-border rounded-md p-5 text-center bg-white text-zinc-900">
+                {qrOpen && <PrintStyle targetId="receipt-print" kind="qr" />}
                 <div className="font-display font-black text-lg">SERVICE HP MANAGER</div>
                 <div className="text-xs">Tanda Terima Service</div>
                 <div className="my-3 flex justify-center"><QRCodeSVG value={trackUrl} size={140} /></div>
@@ -768,6 +770,7 @@ export default function ServiceDetail() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nota Pembatalan Service</DialogTitle></DialogHeader>
           <div id="nota-cancel-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
+            {notaOpen && <PrintStyle targetId="nota-cancel-print" kind="nota" />}
             <div className="text-center">
               <div className="font-display font-black text-lg">{settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}</div>
               {settings?.print_header_subtitle && <div className="text-[10px] text-zinc-500">{settings.print_header_subtitle}</div>}
@@ -921,6 +924,7 @@ export default function ServiceDetail() {
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nota Service</DialogTitle></DialogHeader>
           <div id="nota-final-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
+            {notaFinalOpen && <PrintStyle targetId="nota-final-print" kind="nota" />}
             <div className="text-center">
               <div className="font-display font-black text-lg">{settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}</div>
               {settings?.print_header_subtitle && <div className="text-[10px] text-zinc-500">{settings.print_header_subtitle}</div>}

@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { ShoppingCart, Search, Plus, Minus, Trash2, Receipt, Printer, Package } from "lucide-react";
 import { useBranding } from "@/context/BrandingContext";
+import PrintStyle from "@/components/PrintStyle";
 
 export default function DirectSale() {
   const { settings } = useBranding();
@@ -260,6 +261,7 @@ export default function DirectSale() {
           <DialogHeader><DialogTitle>Nota Penjualan</DialogTitle></DialogHeader>
           {lastSale && (
             <div id="ds-receipt-print" className="border border-border rounded-md p-4 bg-white text-zinc-900 text-xs">
+              {receiptOpen && <PrintStyle targetId="ds-receipt-print" kind="nota" />}
               <div className="text-center">
                 <div className="font-display font-black text-base">
                   {settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}

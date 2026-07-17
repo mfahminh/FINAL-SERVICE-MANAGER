@@ -291,6 +291,17 @@ class SettingsIn(BaseModel):
     wa_template_diagnose: Optional[str] = None
     wa_template_ready: Optional[str] = None
     wa_template_pickup: Optional[str] = None
+    # Thermal Printer settings
+    printer_nota_width: Optional[str] = None   # "58mm" | "80mm" | "100mm" | "A4"
+    printer_label_width: Optional[str] = None
+    printer_qr_width: Optional[str] = None
+    printer_margin_mm: Optional[float] = None  # margin around content (mm)
+    printer_gap_mm: Optional[float] = None     # bottom gap (mm) for cutter/tear-off
+    printer_font_size_pt: Optional[float] = None  # base font size (pt)
+    printer_line_height: Optional[float] = None   # unitless line-height multiplier
+    printer_font_family: Optional[str] = None     # "mono" | "sans"
+    printer_hide_borders: Optional[bool] = None   # true = remove borders for thermal
+    printer_cut_command: Optional[str] = None     # future: escpos hex
 
 SERVICE_STATUSES = [
     "Menunggu Teknisi", "Menunggu Diagnosa", "Sedang Diagnosa", "Menunggu Persetujuan",
@@ -2453,6 +2464,16 @@ async def seed():
         "wa_template_diagnose": _s.get("wa_template_diagnose") or DEFAULT_WA_TEMPLATES["diagnose"],
         "wa_template_ready": _s.get("wa_template_ready") or DEFAULT_WA_TEMPLATES["ready"],
         "wa_template_pickup": _s.get("wa_template_pickup") or DEFAULT_WA_TEMPLATES["pickup"],
+        # Printer defaults
+        "printer_nota_width": _s.get("printer_nota_width") or "80mm",
+        "printer_label_width": _s.get("printer_label_width") or "58mm",
+        "printer_qr_width": _s.get("printer_qr_width") or "58mm",
+        "printer_margin_mm": _s.get("printer_margin_mm") if _s.get("printer_margin_mm") is not None else 2,
+        "printer_gap_mm": _s.get("printer_gap_mm") if _s.get("printer_gap_mm") is not None else 4,
+        "printer_font_size_pt": _s.get("printer_font_size_pt") if _s.get("printer_font_size_pt") is not None else 9,
+        "printer_line_height": _s.get("printer_line_height") if _s.get("printer_line_height") is not None else 1.25,
+        "printer_font_family": _s.get("printer_font_family") or "mono",
+        "printer_hide_borders": _s.get("printer_hide_borders") if _s.get("printer_hide_borders") is not None else True,
     }
     await db.settings.update_one({"id": "main"}, {"$set": _wa_defaults}, upsert=True)
 

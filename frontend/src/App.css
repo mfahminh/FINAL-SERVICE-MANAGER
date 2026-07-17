@@ -1,14 +1,8 @@
 /* App-specific styles intentionally minimal - all design via Tailwind + design tokens */
+/* Print rules are injected dynamically by <PrintStyle /> component for each target element.
+   This gives us proper @page size (58mm/80mm/A4), margins, gap-cutter, and font sizing per settings. */
+
+/* Fallback: hide navigation while printing in case PrintStyle didn't mount */
 @media print {
-  body * { visibility: hidden; }
-  #receipt-print, #receipt-print *,
-  #nota-cancel-print, #nota-cancel-print *,
-  #nota-final-print, #nota-final-print *,
-  #slip-print, #slip-print *,
-  #ds-receipt-print, #ds-receipt-print * { visibility: visible; }
-  #receipt-print,
-  #nota-cancel-print,
-  #nota-final-print,
-  #slip-print,
-  #ds-receipt-print { position: absolute; left: 0; top: 0; width: 100%; }
+  aside, header, .no-print { display: none !important; }
 }

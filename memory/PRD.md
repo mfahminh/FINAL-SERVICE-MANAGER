@@ -166,3 +166,39 @@ Full-stack phone service business management app (Indonesian) covering intake �
 - Badge merah bulat di setiap menu sidebar yang punya `notifKey` (Service, Pekerjaan Saya, QC, Sparepart, Pembayaran, Persetujuan User)
 - Bell icon di header dengan **total badge** + popover breakdown per kategori dengan klik navigasi ke halaman
 - Empty state di popover ("Semua sudah tertangani ✨") saat tidak ada notifikasi
+
+## Feature (2026-07-17) — Thermal Printer Support + Print Fix
+
+### Root cause 3-halaman
+- Sebelumnya `@media print` di App.css cuma pakai `width: 100%` tanpa `@page size` → Chrome default ke A4 (210mm) sehingga konten thermal receipt yang seharusnya 58/80mm meregang & pecah jadi 3 halaman.
+
+### Solusi
+- Buat komponen **`<PrintStyle targetId kind />`** yang inject `<style>` dinamis ke `<head>` saat dialog dibuka. Style ini:
+  - Set `@page { size: {58mm|80mm|100mm|A4} auto; margin: {N}mm }` sesuai `kind` (nota/label/qr)
+  - Set `#{targetId} { width: calc(paperWidth - 2*margin) }` supaya konten pas
+  - `body * { visibility: hidden }` + target visible → hanya elemen print yang tampil
+  - Tighten padding/margin utility classes (p-5, my-3, dst) supaya kompak
+  - Font-size, line-height, font-family, hide-borders semuanya configurable
+- 6 tempat print sudah pakai PrintStyle: `receipt-print` (QR), `nota-cancel-print`, `nota-final-print`, `label-print` (ServiceLabel), `ds-receipt-print` (Direct Sale), `slip-print` (Slip Gaji)
+
+### Settings baru (backend `settings` collection)
+| Key | Default | Keterangan |
+|---|---|---|
+| `printer_nota_width` | `80mm` | Struk service & POS |
+| `printer_label_width` | `58mm` | Label service tag |
+| `printer_qr_width` | `58mm` | QR / Tanda Terima |
+| `printer_margin_mm` | `2` | Margin kertas |
+| `printer_gap_mm` | `4` | Gap bawah utk cutter |
+| `printer_font_size_pt` | `9` | Ukuran font base |
+| `printer_line_height` | `1.25` | Kerapatan baris |
+| `printer_font_family` | `mono` | mono/sans |
+| `printer_hide_borders` | `true` | Hemat tinta thermal |
+
+### UI
+- Settings.jsx: card baru "Thermal Printer" — 3 dropdown paper size, 4 input numeric, Font Family select, Hide-Border switch, tips guide untuk user
+- Test PDF via Playwright: QR receipt @ 58mm → **1 halaman** ✓ (dari sebelumnya 3 halaman)
+
+### Verified
+- Backend backfill defaults sukses (`GET /api/settings` return semua field printer)
+- Frontend compile OK, PrintStyle inject `@page size: 58mm auto` terkonfirmasi via DOM query
+- User bisa ubah paper size per jenis cetakan, effect langsung berlaku saat print berikutnya
