@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import asyncio
 import logging
 import secrets
 import uuid
@@ -278,6 +279,18 @@ class SettingsIn(BaseModel):
     label_footer_text: Optional[str] = None
     qr_header_title: Optional[str] = None
     qr_footer_text: Optional[str] = None
+    # WhatsApp (Fonnte)
+    wa_provider: Optional[str] = None  # "fonnte" | "mock"
+    fonnte_token: Optional[str] = None
+    fonnte_country_code: Optional[str] = None  # default "62"
+    wa_notif_on_create: Optional[bool] = None
+    wa_notif_on_diagnose: Optional[bool] = None
+    wa_notif_on_ready: Optional[bool] = None
+    wa_notif_on_pickup: Optional[bool] = None
+    wa_template_create: Optional[str] = None
+    wa_template_diagnose: Optional[str] = None
+    wa_template_ready: Optional[str] = None
+    wa_template_pickup: Optional[str] = None
 
 SERVICE_STATUSES = [
     "Menunggu Teknisi", "Menunggu Diagnosa", "Sedang Diagnosa", "Menunggu Persetujuan",
@@ -496,6 +509,7 @@ async def create_service(data: ServiceCreate, user: dict = Depends(require_roles
     await db.services.insert_one(svc)
     svc.pop("_id", None)
     await audit(user, "create", "service", svc["id"], {"service_number": svc["service_number"]})
+    asyncio.create_task(notify_service("create", svc["id"]))
     return svc
 
 @api.get("/services/{sid}")
@@ -568,6 +582,7 @@ async def diagnose(sid: str, data: DiagnoseIn, user: dict = Depends(require_role
         "status_history": history
     }})
     await audit(user, "diagnose", "service", sid)
+    asyncio.create_task(notify_service("diagnose", sid))
     return await db.services.find_one({"id": sid}, {"_id": 0})
 
 @api.post("/services/{sid}/use-sparepart")
@@ -671,6 +686,7 @@ async def pickup(sid: str, data: PickupIn, user: dict = Depends(require_roles("k
         "status_history": history
     }})
     await audit(user, "pickup", "service", sid)
+    asyncio.create_task(notify_service("pickup", sid))
     return await db.services.find_one({"id": sid}, {"_id": 0})
 
 # ---------- QC (Quality Control) ----------
@@ -752,6 +768,8 @@ async def submit_qc(sid: str, data: QCCheckIn, user: dict = Depends(require_role
         }
     await db.services.update_one({"id": sid}, {"$set": update})
     await audit(user, "qc", "service", sid, {"passed": all_ok, "failed_count": len(failed_items)})
+    if all_ok:
+        asyncio.create_task(notify_service("ready", sid))
     return await db.services.find_one({"id": sid}, {"_id": 0})
 
 # Public tracking
@@ -2089,13 +2107,189 @@ async def global_search(q: str, user: dict = Depends(get_current_user)):
     ]}, {"_id": 0}).limit(10).to_list(10)
     return {"customers": customers, "services": services}
 
-# ---------- WHATSAPP (mock) ----------
+# ---------- WHATSAPP (Fonnte with mock fallback) ----------
+import httpx
+
+DEFAULT_WA_TEMPLATES = {
+    "create": (
+        "Halo *{customer_name}*,\n\n"
+        "Terima kasih telah mempercayakan servis di *{shop_name}*.\n\n"
+        "Nomor Service: *{service_number}*\n"
+        "Device: {brand} {model}\n"
+        "Keluhan: {complaint}\n"
+        "Estimasi Biaya: Rp {estimated_cost}\n\n"
+        "Lacak status: {tracking_url}\n\n"
+        "Terima kasih 🙏"
+    ),
+    "diagnose": (
+        "Halo *{customer_name}*,\n\n"
+        "Diagnosa untuk device *{brand} {model}* (No. {service_number}) sudah selesai.\n\n"
+        "Diagnosa: {diagnosis}\n"
+        "Kerusakan: {damage}\n"
+        "Tindakan: {action}\n"
+        "Total Biaya: *Rp {estimated_cost}*\n"
+        "Estimasi Selesai: {estimated_days} hari\n\n"
+        "Mohon konfirmasi persetujuan perbaikan.\n"
+        "Lacak: {tracking_url}"
+    ),
+    "ready": (
+        "Halo *{customer_name}*,\n\n"
+        "Kabar baik! Device *{brand} {model}* (No. {service_number}) sudah *SELESAI* dan siap diambil.\n\n"
+        "Total Biaya: *Rp {final_cost}*\n"
+        "Sudah Dibayar: Rp {total_paid}\n"
+        "Sisa: Rp {remaining}\n\n"
+        "Silakan datang ke *{shop_name}* untuk mengambil unit Anda.\n"
+        "Jam operasional: 09:00 - 20:00\n\n"
+        "Lacak: {tracking_url}"
+    ),
+    "pickup": (
+        "Halo *{customer_name}*,\n\n"
+        "Terima kasih telah mengambil device *{brand} {model}* (No. {service_number}).\n\n"
+        "Garansi: *{warranty_days} hari*\n"
+        "Berlaku hingga: {warranty_until}\n\n"
+        "Simpan nota ini untuk klaim garansi. Semoga puas dengan pelayanan kami! ⭐\n"
+        "- {shop_name}"
+    ),
+}
+
+def _fmt_rp(n) -> str:
+    try:
+        return f"{int(n or 0):,}".replace(",", ".")
+    except Exception:
+        return str(n or 0)
+
+async def render_wa_template(kind: str, service: dict, extra: dict = None) -> str:
+    settings = await db.settings.find_one({"id": "main"}, {"_id": 0}) or {}
+    tpl = settings.get(f"wa_template_{kind}") or DEFAULT_WA_TEMPLATES.get(kind, "")
+    shop_name = settings.get("shop_name") or settings.get("app_name") or "Service HP Manager"
+    diag = service.get("diagnosis") or {}
+    final_cost = service.get("final_cost", 0) or 0
+    total_paid = service.get("total_paid", 0) or 0
+    ctx = {
+        "customer_name": service.get("customer_name", "Pelanggan"),
+        "shop_name": shop_name,
+        "service_number": service.get("service_number", ""),
+        "brand": service.get("brand", ""),
+        "model": service.get("model", ""),
+        "complaint": service.get("complaint", ""),
+        "estimated_cost": _fmt_rp(service.get("estimated_cost", 0)),
+        "final_cost": _fmt_rp(final_cost),
+        "total_paid": _fmt_rp(total_paid),
+        "remaining": _fmt_rp(max(0, final_cost - total_paid)),
+        "diagnosis": diag.get("diagnosis", "-"),
+        "damage": diag.get("damage", "-"),
+        "action": diag.get("action", "-"),
+        "estimated_days": diag.get("estimated_days", "-"),
+        "warranty_days": service.get("warranty_days", 0),
+        "warranty_until": (service.get("warranty_until") or "")[:10],
+        "tracking_url": f"{os.environ.get('PUBLIC_APP_URL', '')}/track/{service.get('service_number', '')}",
+    }
+    if extra:
+        ctx.update(extra)
+    try:
+        return tpl.format(**ctx)
+    except KeyError:
+        # Fallback: substitusi manual (biar tidak crash bila field custom)
+        out = tpl
+        for k, v in ctx.items():
+            out = out.replace("{" + k + "}", str(v))
+        return out
+
+async def send_fonnte(phone: str, message: str) -> dict:
+    """Kirim WA via Fonnte. Return dict {ok, provider, result|error}."""
+    settings = await db.settings.find_one({"id": "main"}, {"_id": 0}) or {}
+    token = settings.get("fonnte_token") or ""
+    country = settings.get("fonnte_country_code") or "62"
+    provider = (settings.get("wa_provider") or "").lower()
+    if not phone:
+        return {"ok": False, "provider": "none", "error": "phone kosong"}
+    if provider != "fonnte" or not token or token in ("YOUR_FONNTE_TOKEN", "placeholder"):
+        logger.info(f"[WA MOCK] -> {phone} | {message[:80]}")
+        return {"ok": True, "provider": "mock", "result": {"info": "mock (token/provider belum di-set)"}}
+    url = "https://api.fonnte.com/send"
+    headers = {"Authorization": token}
+    data = {"target": phone, "message": message, "countryCode": country}
+    try:
+        async with httpx.AsyncClient(timeout=15) as cli:
+            r = await cli.post(url, headers=headers, data=data)
+            try:
+                payload = r.json()
+            except Exception:
+                payload = {"raw": r.text}
+            ok = bool(payload.get("status", False)) if isinstance(payload, dict) else False
+            return {"ok": ok, "provider": "fonnte", "status_code": r.status_code, "result": payload}
+    except Exception as e:
+        logger.exception("Fonnte send failed")
+        return {"ok": False, "provider": "fonnte", "error": str(e)}
+
+async def notify_service(kind: str, service_id: str, extra: dict = None):
+    """Kirim notifikasi WA sesuai kind (create/diagnose/ready/pickup). Cek toggle Settings."""
+    try:
+        settings = await db.settings.find_one({"id": "main"}, {"_id": 0}) or {}
+        toggle_key = f"wa_notif_on_{kind}"
+        if not settings.get(toggle_key, True):
+            return {"skipped": True, "reason": f"{toggle_key}=false"}
+        service = await db.services.find_one({"id": service_id}, {"_id": 0})
+        if not service:
+            return {"skipped": True, "reason": "service not found"}
+        phone = service.get("customer_phone") or ""
+        if not phone:
+            return {"skipped": True, "reason": "no phone"}
+        message = await render_wa_template(kind, service, extra=extra)
+        result = await send_fonnte(phone, message)
+        await db.wa_logs.insert_one({
+            "id": gen_id(),
+            "kind": kind,
+            "service_id": service_id,
+            "service_number": service.get("service_number"),
+            "phone": phone,
+            "message": message,
+            "provider": result.get("provider"),
+            "ok": result.get("ok", False),
+            "response": result,
+            "sent_at": now_iso(),
+        })
+        return result
+    except Exception as e:
+        logger.exception(f"notify_service({kind}) failed")
+        return {"ok": False, "error": str(e)}
+
+class WhatsappSendIn(BaseModel):
+    phone: str
+    message: str
+    service_id: Optional[str] = ""
+
 @api.post("/whatsapp/send")
-async def whatsapp_send(payload: dict, user: dict = Depends(get_current_user)):
-    """Mock WhatsApp send - logs message. Replace with real provider later."""
-    logger.info(f"[WA MOCK] To: {payload.get('phone')} | Msg: {payload.get('message')[:100]}")
-    await db.wa_logs.insert_one({"id": gen_id(), **payload, "sent_at": now_iso(), "by": user["name"]})
-    return {"ok": True, "mocked": True}
+async def whatsapp_send(payload: WhatsappSendIn, user: dict = Depends(get_current_user)):
+    """Manual WA send (dari halaman service detail atau tools)."""
+    result = await send_fonnte(payload.phone, payload.message)
+    await db.wa_logs.insert_one({
+        "id": gen_id(), "kind": "manual",
+        "service_id": payload.service_id or "", "phone": payload.phone,
+        "message": payload.message, "provider": result.get("provider"),
+        "ok": result.get("ok", False), "response": result,
+        "sent_at": now_iso(), "by": user["name"],
+    })
+    return result
+
+class WATestIn(BaseModel):
+    phone: str
+    message: Optional[str] = "Tes koneksi Fonnte dari Service HP Manager ✅"
+
+@api.post("/whatsapp/test")
+async def whatsapp_test(payload: WATestIn, user: dict = Depends(require_roles("owner", "admin"))):
+    """Test koneksi Fonnte dengan mengirim pesan singkat."""
+    result = await send_fonnte(payload.phone, payload.message)
+    return result
+
+@api.get("/whatsapp/logs")
+async def whatsapp_logs(service_id: Optional[str] = None, limit: int = 100,
+                       user: dict = Depends(require_roles("owner", "admin"))):
+    q = {}
+    if service_id:
+        q["service_id"] = service_id
+    items = await db.wa_logs.find(q, {"_id": 0}).sort("sent_at", -1).to_list(limit)
+    return items
 
 # ---------- Seed ----------
 async def seed():
@@ -2155,8 +2349,36 @@ async def seed():
             "primary_color": "#ea7c1f", "secondary_color": "#1e293b",
             "footer_text": "© 2026 Service HP Manager",
             "label_size": "58mm",
-            "invoice_template": "", "wa_template": ""
+            "invoice_template": "", "wa_template": "",
+            "wa_provider": "mock",
+            "fonnte_token": "",
+            "fonnte_country_code": "62",
+            "wa_notif_on_create": True,
+            "wa_notif_on_diagnose": True,
+            "wa_notif_on_ready": True,
+            "wa_notif_on_pickup": True,
+            "wa_template_create": DEFAULT_WA_TEMPLATES["create"],
+            "wa_template_diagnose": DEFAULT_WA_TEMPLATES["diagnose"],
+            "wa_template_ready": DEFAULT_WA_TEMPLATES["ready"],
+            "wa_template_pickup": DEFAULT_WA_TEMPLATES["pickup"],
         })
+
+    # Backfill: pastikan settings punya field WA (untuk instalasi lama)
+    _s = await db.settings.find_one({"id": "main"}) or {}
+    _wa_defaults = {
+        "wa_provider": _s.get("wa_provider") or "mock",
+        "fonnte_token": _s.get("fonnte_token") or "",
+        "fonnte_country_code": _s.get("fonnte_country_code") or "62",
+        "wa_notif_on_create": _s.get("wa_notif_on_create", True),
+        "wa_notif_on_diagnose": _s.get("wa_notif_on_diagnose", True),
+        "wa_notif_on_ready": _s.get("wa_notif_on_ready", True),
+        "wa_notif_on_pickup": _s.get("wa_notif_on_pickup", True),
+        "wa_template_create": _s.get("wa_template_create") or DEFAULT_WA_TEMPLATES["create"],
+        "wa_template_diagnose": _s.get("wa_template_diagnose") or DEFAULT_WA_TEMPLATES["diagnose"],
+        "wa_template_ready": _s.get("wa_template_ready") or DEFAULT_WA_TEMPLATES["ready"],
+        "wa_template_pickup": _s.get("wa_template_pickup") or DEFAULT_WA_TEMPLATES["pickup"],
+    }
+    await db.settings.update_one({"id": "main"}, {"$set": _wa_defaults}, upsert=True)
 
     # Seed default technicians (link to existing teknisi user)
     if await db.technicians.count_documents({}) == 0:

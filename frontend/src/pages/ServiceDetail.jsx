@@ -231,8 +231,13 @@ export default function ServiceDetail() {
       reminder: `Halo ${svc.customer_name},\n\nReminder: HP Anda (${svc.service_number}) sudah selesai. Mohon segera diambil ya.\n\nTerima kasih.`,
     };
     try {
-      await api.post("/whatsapp/send", { phone: svc.customer_phone, message: messages[template] });
-      toast.success("Pesan WA terkirim (mocked)");
+      const r = await api.post("/whatsapp/send", { phone: svc.customer_phone, message: messages[template], service_id: id });
+      if (r.data?.ok) {
+        const prov = r.data.provider || "mock";
+        toast.success(prov === "fonnte" ? "Pesan WA terkirim via Fonnte" : "Pesan WA (mode mock — atur token di Settings)");
+      } else {
+        toast.error(`Gagal kirim: ${r.data?.error || "unknown"}`);
+      }
     } catch (e) { toast.error("Gagal kirim"); }
   };
 

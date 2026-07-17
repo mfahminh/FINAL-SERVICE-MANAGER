@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Upload, Printer, AlertTriangle, Trash2 } from "lucide-react";
+import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 export default function Settings() {
   const [s, setS] = useState(null);
@@ -22,6 +23,25 @@ export default function Settings() {
   const [resetKeepUsers, setResetKeepUsers] = useState(true);
   const [resetKeepSettings, setResetKeepSettings] = useState(true);
   const [resetLoading, setResetLoading] = useState(false);
+  const [waTestPhone, setWaTestPhone] = useState("");
+  const [waTesting, setWaTesting] = useState(false);
+
+  const doWaTest = async () => {
+    if (!waTestPhone) return toast.error("Isi nomor HP dulu");
+    setWaTesting(true);
+    try {
+      // Save current settings first so token/provider terpakai
+      await api.patch("/settings", s);
+      const r = await api.post("/whatsapp/test", { phone: waTestPhone });
+      if (r.data.ok) {
+        toast.success(`Terkirim via ${r.data.provider}${r.data.provider === "mock" ? " (token belum di-set)" : ""}`);
+      } else {
+        toast.error(`Gagal: ${r.data.error || JSON.stringify(r.data.result)}`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal test WA");
+    } finally { setWaTesting(false); }
+  };
 
   useEffect(() => { api.get("/settings").then((r) => setS(r.data)); }, []);
 
@@ -109,6 +129,126 @@ export default function Settings() {
         </div>
         <div><Label>Alamat</Label><Textarea rows={2} value={s.address || ""} onChange={(e) => setS({ ...s, address: e.target.value })} /></div>
         <div><Label>Template WhatsApp</Label><Textarea rows={3} value={s.wa_template || ""} onChange={(e) => setS({ ...s, wa_template: e.target.value })} placeholder="Halo {nama}, service {nomor} ..." /></div>
+      </Card>
+
+      {/* WhatsApp Notifications (Fonnte) */}
+      <Card className="p-5 border border-border space-y-4" data-testid="wa-notifications-card">
+        <div className="flex items-center gap-2">
+          <MessageCircle className="size-5 text-primary" />
+          <h3 className="font-display font-bold text-lg">Notifikasi WhatsApp Otomatis</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Kirim WA otomatis ke pelanggan setiap perubahan status service, via <b>Fonnte</b>.
+          Dapatkan token di <a href="https://fonnte.com" target="_blank" rel="noreferrer" className="text-primary underline">fonnte.com</a> → menu <b>Device</b>.
+          Kalau token kosong, notifikasi jadi mode <b>mock</b> (hanya di-log, tidak dikirim).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-2">
+            <Label>Fonnte Device Token</Label>
+            <Input
+              type="password"
+              value={s.fonnte_token || ""}
+              onChange={(e) => setS({ ...s, fonnte_token: e.target.value })}
+              placeholder="Tempel token dari fonnte.com..."
+              data-testid="fonnte-token-input"
+            />
+          </div>
+          <div>
+            <Label>Kode Negara</Label>
+            <Input
+              value={s.fonnte_country_code || "62"}
+              onChange={(e) => setS({ ...s, fonnte_country_code: e.target.value })}
+              placeholder="62"
+              data-testid="fonnte-country-code-input"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50 border border-border">
+          <Switch
+            checked={(s.wa_provider || "mock") === "fonnte"}
+            onCheckedChange={(v) => setS({ ...s, wa_provider: v ? "fonnte" : "mock" })}
+            data-testid="wa-provider-switch"
+          />
+          <div className="flex-1">
+            <div className="font-semibold text-sm">Aktifkan Fonnte</div>
+            <div className="text-xs text-muted-foreground">
+              {(s.wa_provider || "mock") === "fonnte" ? "Kirim asli via Fonnte" : "Mode MOCK — pesan hanya di-log"}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 pt-3 border-t border-border">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Pemicu Notifikasi Otomatis</div>
+          {[
+            ["wa_notif_on_create", "Saat service dibuat", "Setelah pelanggan mendaftar service baru"],
+            ["wa_notif_on_diagnose", "Setelah diagnosa selesai", "Teknisi/admin selesai input diagnosa & biaya"],
+            ["wa_notif_on_ready", "Saat siap diambil", "Lulus QC — device sudah selesai"],
+            ["wa_notif_on_pickup", "Setelah pickup", "Konfirmasi pickup + info garansi"],
+          ].map(([key, title, desc]) => (
+            <div key={key} className="flex items-center gap-3 py-1.5">
+              <Switch
+                checked={s[key] !== false}
+                onCheckedChange={(v) => setS({ ...s, [key]: v })}
+                data-testid={`toggle-${key}`}
+              />
+              <div className="flex-1">
+                <div className="font-medium text-sm">{title}</div>
+                <div className="text-xs text-muted-foreground">{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3 pt-3 border-t border-border">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Template Pesan (placeholder: {"{customer_name}, {service_number}, {brand}, {model}, {complaint}, {estimated_cost}, {final_cost}, {total_paid}, {remaining}, {diagnosis}, {damage}, {action}, {warranty_days}, {warranty_until}, {tracking_url}, {shop_name}"})
+          </div>
+          <div>
+            <Label>Template — Service Baru</Label>
+            <Textarea rows={5} value={s.wa_template_create || ""}
+              onChange={(e) => setS({ ...s, wa_template_create: e.target.value })}
+              data-testid="wa-template-create" />
+          </div>
+          <div>
+            <Label>Template — Diagnosa Selesai</Label>
+            <Textarea rows={5} value={s.wa_template_diagnose || ""}
+              onChange={(e) => setS({ ...s, wa_template_diagnose: e.target.value })}
+              data-testid="wa-template-diagnose" />
+          </div>
+          <div>
+            <Label>Template — Siap Diambil</Label>
+            <Textarea rows={5} value={s.wa_template_ready || ""}
+              onChange={(e) => setS({ ...s, wa_template_ready: e.target.value })}
+              data-testid="wa-template-ready" />
+          </div>
+          <div>
+            <Label>Template — Setelah Pickup</Label>
+            <Textarea rows={4} value={s.wa_template_pickup || ""}
+              onChange={(e) => setS({ ...s, wa_template_pickup: e.target.value })}
+              data-testid="wa-template-pickup" />
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-border">
+          <Label>Test Koneksi Fonnte</Label>
+          <div className="flex gap-2 mt-1">
+            <Input
+              placeholder="Nomor HP Anda, cth: 081234567890"
+              value={waTestPhone}
+              onChange={(e) => setWaTestPhone(e.target.value)}
+              data-testid="wa-test-phone-input"
+            />
+            <Button onClick={doWaTest} disabled={waTesting} data-testid="wa-test-send-btn">
+              <Send className="size-4 mr-1.5" />
+              {waTesting ? "Mengirim..." : "Kirim Test"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Simpan settings dulu → lalu klik "Kirim Test". Cek WhatsApp Anda.
+          </p>
+        </div>
       </Card>
 
       {/* Header Cetakan */}

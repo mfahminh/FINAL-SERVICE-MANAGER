@@ -101,3 +101,8 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## 2026-07-17 - Feature: WhatsApp via Fonnte
+- Backend tested via curl: 4 auto-notifications (create/diagnose/ready/pickup) fire correctly on lifecycle events
+- Toggle Off/On di Settings berfungsi (per event)
+- Provider "mock" jalan (token belum di-set) — semua notifikasi tercatat di /api/whatsapp/logs dengan ok=true
+- User (owner) tinggal: buka Settings → paste Fonnte token → aktifkan switch "Fonnte" → save → Test Koneksi

@@ -128,3 +128,24 @@ Full-stack phone service business management app (Indonesian) covering intake �
 - `JWT_SECRET` ditambahkan ke `backend/.env`
 - Supervisor: backend + frontend RUNNING
 - Verified: login owner OK, dashboard render, sidebar 15+ menu tampil, seed data terpasang (4 users + customers + spareparts + supplier)
+
+## Feature (2026-07-17) — WhatsApp Notifications via Fonnte
+### Backend
+- Provider konfigurable: `wa_provider` ("mock" | "fonnte"), token disimpan di `settings.fonnte_token` (dari UI, tidak di .env)
+- Endpoint baru:
+  - `POST /api/whatsapp/send` (real) — kirim manual, log ke `wa_logs`
+  - `POST /api/whatsapp/test` — test koneksi (owner/admin)
+  - `GET /api/whatsapp/logs?service_id=&limit=` — riwayat notifikasi
+- Notifikasi otomatis (fire-and-forget via `asyncio.create_task`):
+  - `create` → hook di `POST /services`
+  - `diagnose` → hook di `POST /services/{id}/diagnose`
+  - `ready` → hook di `POST /services/{id}/qc` bila all OK (status → Selesai)
+  - `pickup` → hook di `POST /services/{id}/pickup`
+- 4 toggle per event di Settings: `wa_notif_on_{create,diagnose,ready,pickup}`
+- 4 template editable dengan placeholder: `{customer_name}, {service_number}, {brand}, {model}, {complaint}, {estimated_cost}, {final_cost}, {total_paid}, {remaining}, {diagnosis}, {damage}, {action}, {warranty_days}, {warranty_until}, {tracking_url}, {shop_name}`
+- Fallback aman: token kosong/`YOUR_FONNTE_TOKEN` → mode mock (log only, tidak crash)
+- Deps: `httpx==0.28.1` (async HTTP)
+
+### Frontend
+- Settings.jsx: Card baru "Notifikasi WhatsApp Otomatis" dengan token input, kode negara, switch Fonnte on/off, 4 toggle event, 4 textarea template, tombol Test Koneksi
+- ServiceDetail.jsx: tombol "Kirim WA" tetap ada — sekarang tampilkan provider aktual di toast (mock vs fonnte)
