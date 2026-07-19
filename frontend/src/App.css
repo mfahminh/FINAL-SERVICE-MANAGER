@@ -1,0 +1,8 @@
+/* App-specific styles intentionally minimal - all design via Tailwind + design tokens */
+/* Print rules are injected dynamically by <PrintStyle /> component for each target element.
+   This gives us proper @page size (58mm/80mm/A4), margins, gap-cutter, and font sizing per settings. */
+
+/* Fallback: hide navigation while printing in case PrintStyle didn't mount */
+@media print {
+  aside, header, .no-print { display: none !important; }
+}
