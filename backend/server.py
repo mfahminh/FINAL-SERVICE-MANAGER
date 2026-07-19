@@ -36,13 +36,13 @@ client = AsyncIOMotorClient(
     serverSelectionTimeoutMS=5000
 )
 
-db = client[os.getenv['DB_NAME']]
+db = client[os.getenv("DB_NAME")]
 if not db:
     raise RuntimeError("BD belum disetel")
 
 JWT_ALGORITHM = "HS256"
 
-JWT_SECRET = os.getenv['JWT_SECRET']
+JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise RuntimeError("JWT_SECRET belum disetel")
 
