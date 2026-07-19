@@ -37,14 +37,14 @@ client = AsyncIOMotorClient(
 )
 
 db = client[os.getenv("DB_NAME")]
-if not db:
-    raise RuntimeError("BD belum disetel")
+if db is None:
+    raise Exception("Database gagal")
 
 JWT_ALGORITHM = "HS256"
 
 JWT_SECRET = os.getenv("JWT_SECRET")
-if not JWT_SECRET:
-    raise RuntimeError("JWT_SECRET belum disetel")
+if JWT_SECRET is None:
+    raise Exception("JWT_SECRET belum disetel")
 
 app = FastAPI(title="Service HP Manager API")
 api = APIRouter(prefix="/api")
