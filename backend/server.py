@@ -19,13 +19,37 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = [
+    "http://localhost:3000",
+    os.getenv("FRONTEND_URL", ""),
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o for o in origins if o],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ---------- Setup ----------
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.getenv("MONGO_URL")
+if not mongo_url:
+    raise RuntimeError("MONGO_URL belum disetel")
+    
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+
+db = client[os.getenv['DB_NAME']]
+if not db:
+    raise RuntimeError("BD belum disetel")
 
 JWT_ALGORITHM = "HS256"
-JWT_SECRET = os.environ['JWT_SECRET']
+
+JWT_SECRET = os.getenv['JWT_SECRET']
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET belum disetel")
 
 app = FastAPI(title="Service HP Manager API")
 api = APIRouter(prefix="/api")
