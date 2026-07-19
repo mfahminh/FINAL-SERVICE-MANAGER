@@ -19,6 +19,29 @@ node_modules/
 # Testing
 /coverage
 
+# Node
+node_modules/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+backend/.env
+frontend/.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Next.js
 /.next/
 /out/
