@@ -22,7 +22,7 @@ export default function FinancialReports() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  useEffect(() => { loadFin(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { loadFin(); /* eslint-disable-next-line */ }, [loadFin]);
 
   const exportCSV = (rows, headers, filename) => {
     const csv = [headers.join(","), ...rows.map(r => headers.map(h => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
