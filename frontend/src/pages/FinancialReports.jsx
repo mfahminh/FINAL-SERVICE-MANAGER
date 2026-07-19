@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api, { fmtIDR } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,12 @@ export default function FinancialReports() {
   const [fin, setFin] = useState(null);
   const [techs, setTechs] = useState(null);
 
-  const loadFin = async () => setFin((await api.get(`/reports/financial?start=${start}&end=${end}`)).data);
+  const loadFin = useCallback(async () => setFin((await api.get(`/reports/financial?start=${start}&end=${end}`)).data), [start, end]);
   const loadTechs = async () => setTechs((await api.get("/reports/technicians")).data);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  useEffect(() => { loadFin(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { loadFin(); }, [loadFin]);
 
   const exportCSV = (rows, headers, filename) => {
     const csv = [headers.join(","), ...rows.map(r => headers.map(h => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
