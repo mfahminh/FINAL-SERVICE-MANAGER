@@ -1777,6 +1777,70 @@ def _build_pdf(title: str, headers: List[str], rows: List[List], totals: Optiona
     return buf.getvalue()
 
 
+def _build_salary_slip_pdf(slip):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from io import BytesIO
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=15*mm, rightMargin=15*mm, topMargin=12*mm, bottomMargin=12*mm)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Header: shop name and address
+    story.append(Paragraph(f"<b>{slip.get('shop', {}).get('name','')}</b>", ParagraphStyle('h', parent=styles['Title'], alignment=1, fontSize=16)))
+    if slip.get('shop', {}).get('address'):
+        story.append(Paragraph(slip['shop']['address'], ParagraphStyle('addr', parent=styles['Normal'], alignment=1, fontSize=9, textColor=colors.HexColor('#6B7280'))))
+    story.append(Spacer(1,6))
+    story.append(Paragraph('<b>SLIP GAJI TEKNISI</b>', ParagraphStyle('t', parent=styles['Heading2'], alignment=1, fontSize=12)))
+    story.append(Spacer(1,8))
+
+    # Technician and period info
+    info_data = [
+        ['Nama:', slip.get('technician', {}).get('name',''), '% Komisi:', f"{slip.get('technician', {}).get('commission_percent',0)}%"],
+        ['Periode:', f"{slip.get('period', {}).get('start','')} s/d {slip.get('period', {}).get('end','')}", 'Jumlah Job:', str(slip.get('job_count',0))]
+    ]
+    t_info = Table(info_data, colWidths=[40*mm,60*mm,35*mm,35*mm])
+    t_info.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),9),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('BOTTOMPADDING',(0,0),(-1,-1),6)]))
+    story.append(t_info)
+    story.append(Spacer(1,8))
+
+    # Services table
+    svc_rows = [[ 'Tgl', 'No Service', 'Pelanggan', 'Device', 'B. Jasa', 'Komisi' ]]
+    for s in slip.get('services', []):
+        svc_rows.append([s.get('date',''), s.get('service_number',''), s.get('customer_name',''), s.get('brand_model',''), _fmt_idr(s.get('service_fee',0)), _fmt_idr(s.get('commission',0))])
+    if len(svc_rows)==1:
+        svc_rows.append(['', '', 'Tidak ada service pada periode ini', '', '', ''])
+    tbl = Table(svc_rows, colWidths=[25*mm,30*mm,60*mm,50*mm,25*mm,25*mm])
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#F3F4F6')),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.HexColor('#374151')),
+        ('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#D1D5DB')),
+        ('FONTSIZE',(0,0),(-1,-1),9),
+        ('ALIGN',(-2,1),(-1,-1),'RIGHT')
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1,10))
+
+    # Total commission box (green)
+    total_comm = slip.get('total_commission', slip.get('total_commission',0))
+    total_par = Paragraph(f"<b>TOTAL KOMISI (GAJI)</b> <font color='#065F46'>{_fmt_idr(total_comm)}</font>", ParagraphStyle('total', parent=styles['Normal'], backColor=colors.HexColor('#ECFDF5'), fontSize=11, leading=14))
+    story.append(total_par)
+    story.append(Spacer(1,12))
+
+    # Footer with issuer and signature block
+    footer_data = [[f"Diterbitkan oleh: {slip.get('generated_by','')}", f"Tanda Tangan Teknisi:"], [f"{fmtDate(slip.get('generated_at'))}", f"\n\n\n{slip.get('technician',{}).get('name','')}"]]
+    t_foot = Table(footer_data, colWidths=[100*mm,60*mm])
+    t_foot.setStyle(TableStyle([('FONTSIZE',(0,0),(-1,-1),9),('VALIGN',(0,0),(-1,-1),'TOP')]))
+    story.append(t_foot)
+
+    doc.build(story)
+    return buf.getvalue()
+
+
 def _stream_file(content: bytes, filename: str, media_type: str):
     from fastapi.responses import Response
     return Response(
@@ -1928,11 +1992,20 @@ async def export_report(
         headers = ["Tanggal", "No Service", "Pelanggan", "Device", "Biaya Jasa", "Komisi"]
         total_fee = 0
         total_comm = 0
+        services_detail = []
         for s in svcs:
             fee = s.get("service_fee", s.get("estimated_cost", 0) or 0) or 0
             comm = round(fee * pct)
             total_fee += fee
             total_comm += comm
+            services_detail.append({
+                "date": (s.get("created_at") or "")[:10],
+                "service_number": s.get("service_number", ""),
+                "customer_name": s.get("customer_name", ""),
+                "brand_model": f"{s.get('brand','')} {s.get('model','')}".strip(),
+                "service_fee": fee,
+                "commission": comm,
+            })
             rows.append([
                 (s.get("created_at") or "")[:10],
                 s.get("service_number", ""),
@@ -1945,6 +2018,22 @@ async def export_report(
             "Total Biaya Jasa": _fmt_idr(total_fee),
             "TOTAL KOMISI (GAJI)": _fmt_idr(total_comm),
         }
+        # If PDF requested, build a nicer slip PDF matching frontend print style
+        if format == "pdf":
+            slip_json = {
+                "technician": {"id": tech["id"], "name": tech["name"], "commission_percent": tech.get("commission_percent", 0)},
+                "period": {"start": start, "end": end},
+                "shop": {"name": (await db.settings.find_one({}, {"_id": 0})).get("shop_name") if await db.settings.find_one({}, {"_id": 0}) else "Service HP Manager", "address": (await db.settings.find_one({}, {"_id": 0})).get("shop_address", "") if await db.settings.find_one({}, {"_id": 0}) else ""},
+                "services": services_detail,
+                "job_count": len(svcs),
+                "total_service_fee": total_fee,
+                "total_commission": total_comm,
+                "generated_at": now_iso(),
+                "generated_by": user["name"],
+            }
+            pdf_bytes = _build_salary_slip_pdf(slip_json)
+            filename = f"slip_gaji_{tech['name'].replace(' ', '_')}_{start}_{end}.pdf"
+            return _stream_file(pdf_bytes, filename, "application/pdf")
 
     elif type == "financial":
         pays = await db.payments.find({"created_at": {"$gte": start, "$lte": end_dt}}, {"_id": 0}).to_list(10000)
