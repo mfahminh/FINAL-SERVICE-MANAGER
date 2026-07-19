@@ -39,7 +39,10 @@ mongo_url = os.getenv("MONGO_URL")
 if not mongo_url:
     raise RuntimeError("MONGO_URL belum disetel")
     
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(
+    mongo_url,
+    serverSelectionTimeoutMS=5000
+)
 
 db = client[os.getenv['DB_NAME']]
 if not db:
@@ -54,7 +57,11 @@ if not JWT_SECRET:
 app = FastAPI(title="Service HP Manager API")
 api = APIRouter(prefix="/api")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
 logger = logging.getLogger("service-hp")
 
 # ---------- Helpers ----------
@@ -2131,6 +2138,28 @@ async def reset_database(data: ResetDBIn, user: dict = Depends(require_roles("ow
     logger.warning(f"[RESET DB] by {user['name']} - counts: {counts}")
     return {"ok": True, "deleted_counts": counts, "message": "Database telah di-reset. Data default sudah dibuat ulang."}
 
+
+# ----------HEALT CHECK ----------
+@app.get("/health")
+async def health():
+    await client.admin.command("ping")
+    return {
+        "status": "healthy",
+        "database": "connected"
+    }
+
+# ---------- STARTUP EVENT ----------
+@app.on_event("startup")
+async def startup():
+    logger.info("Connecting to MongoDB...")
+    await client.admin.command("ping")
+    logger.info("MongoDB connected") 
+
+# ---------- SHUTDOWN EVENT ----------
+@app.on_event("shutdown")
+async def shutdown():
+    client.close()
+    
 # ---------- GLOBAL SEARCH ----------
 @api.get("/search")
 async def global_search(q: str, user: dict = Depends(get_current_user)):
