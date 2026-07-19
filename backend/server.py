@@ -51,7 +51,11 @@ api = APIRouter(prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o for o in origins if o],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://your-project.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
