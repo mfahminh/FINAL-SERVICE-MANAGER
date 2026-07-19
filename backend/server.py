@@ -49,13 +49,15 @@ if JWT_SECRET is None:
 app = FastAPI(title="Service HP Manager API")
 api = APIRouter(prefix="/api")
 
+# Allow origins: include FRONTEND_URL (from env) plus common localdev hosts
+_allowed_origins = [o for o in origins if o]
+for _loc in ("http://localhost:3000", "http://localhost:5173"):
+    if _loc not in _allowed_origins:
+        _allowed_origins.append(_loc)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://your-project.vercel.app",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
