@@ -26,14 +26,6 @@ origins = [
     os.getenv("FRONTEND_URL", ""),
 ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[o for o in origins if o],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # ---------- Setup ----------
 mongo_url = os.getenv("MONGO_URL")
 if not mongo_url:
@@ -56,6 +48,15 @@ if not JWT_SECRET:
 
 app = FastAPI(title="Service HP Manager API")
 api = APIRouter(prefix="/api")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o for o in origins if o],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 logging.basicConfig(
     level=logging.INFO,
