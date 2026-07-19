@@ -2,6 +2,24 @@ services:
   - type: web
     name: service-manager-api
     runtime: python
+
     rootDir: backend
+
     buildCommand: pip install -r requirements.txt
+
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+
+    plan: free
+
+    envVars:
+      - key: MONGO_URL
+        sync: false
+
+      - key: DB_NAME
+        value: service_manager
+
+      - key: JWT_SECRET
+        sync: false
+
+      - key: FRONTEND_URL
+        sync: false
