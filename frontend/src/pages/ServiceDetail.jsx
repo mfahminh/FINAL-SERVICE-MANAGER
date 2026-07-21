@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Stethoscope, Wrench, Package, Receipt, CheckSquare, QrCode as QrIcon, Send, Printer, Hand, UserCog, Tag, X, Pencil, ClipboardCheck, ShieldCheck, ShieldAlert, FileText, Check } from "lucide-react";
+import { ArrowLeft, Stethoscope, Wrench, Package, Receipt, CheckSquare, QrCode as QrIcon, Send, Printer, Hand, UserCog, Tag, X, Pencil, ClipboardCheck, ShieldCheck, ShieldAlert, FileText, Check, Bluetooth } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/context/AuthContext";
@@ -18,6 +18,7 @@ import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
 import PrintStyle from "@/components/PrintStyle";
 import { sendRaw, buildFinalServiceNota, buildServiceIntakeReceipt } from "@/lib/escpos";
+import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 import { QC_CHECKLIST, QC_ITEMS_FLAT } from "@/constants/qcChecklist";
 
 export default function ServiceDetail() {
@@ -57,6 +58,16 @@ export default function ServiceDetail() {
       toast.success("Terkirim ke printer USB");
     } catch (e) {
       toast.error(e.message || "Gagal print via USB");
+    }
+  };
+
+  const btPrint = async (builderFn) => {
+    try {
+      const bytesData = builderFn();
+      await printBluetoothRaw(bytesData);
+      toast.success("Terkirim ke printer Bluetooth");
+    } catch (e) {
+      toast.error(e.message || "Gagal print via Bluetooth");
     }
   };
 
@@ -298,6 +309,7 @@ export default function ServiceDetail() {
               <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => window.print()} className="gap-2" data-testid="qr-print-btn"><Printer className="size-4" />Cetak Biasa</Button>
                 <Button variant="outline" onClick={() => usbPrint(() => buildServiceIntakeReceipt(svc, settings, trackUrl))} className="gap-2" data-testid="qr-usb-print-btn" title="Print langsung via USB (ESC/POS)"><Printer className="size-4" />USB</Button>
+                {isBluetoothAvailable() && <Button variant="secondary" onClick={() => btPrint(() => buildServiceIntakeReceipt(svc, settings, trackUrl))} className="gap-2 col-span-2" data-testid="qr-bt-print-btn" title="Print langsung via Bluetooth"><Bluetooth className="size-4" />Bluetooth</Button>}
               </div>
             </DialogContent>
           </Dialog>
@@ -1020,6 +1032,7 @@ export default function ServiceDetail() {
             <Button variant="outline" onClick={() => setNotaFinalOpen(false)} className="flex-1" data-testid="nota-final-close">Tutup</Button>
             <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="nota-final-print"><Printer className="size-4" />Cetak Biasa</Button>
             <Button variant="secondary" onClick={() => usbPrint(() => buildFinalServiceNota(svc, settings))} className="flex-1 gap-2" data-testid="nota-final-usb-print" title="Print langsung via USB (ESC/POS thermal)"><Printer className="size-4" />USB</Button>
+            {isBluetoothAvailable() && <Button variant="secondary" onClick={() => btPrint(() => buildFinalServiceNota(svc, settings))} className="flex-1 gap-2" data-testid="nota-final-bt-print" title="Print langsung via Bluetooth"><Bluetooth className="size-4" />Bluetooth</Button>}
           </div>
         </DialogContent>
       </Dialog>
