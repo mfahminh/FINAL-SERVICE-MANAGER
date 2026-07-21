@@ -23,18 +23,10 @@ export async function connectPrinter() {
   }
 
   try {
-    // Request device with broader filters for thermal printers
-    // Most thermal printers expose SPP service
+    // Request device with acceptAllDevices to show any nearby BLE device.
+    // This helps if printer advertises no matching namePrefix. optionalServices hints which GATT services we need.
     const device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { namePrefix: "printer" },
-        { namePrefix: "thermal" },
-        { namePrefix: "receipt" },
-        { namePrefix: "pos" },
-        { namePrefix: "pt" },
-        { namePrefix: "iprint" },
-        { namePrefix: "xp" },
-      ],
+      acceptAllDevices: true,
       optionalServices: [
         "00001101-0000-1000-8000-00805f9b34fb", // Serial Port Profile (SPP)
         "000018f0-0000-1000-8000-00805f9b34fb", // Device Info alternative
