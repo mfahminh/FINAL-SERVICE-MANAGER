@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { ShoppingCart, Search, Plus, Minus, Trash2, Receipt, Printer, Package } from "lucide-react";
+import { ShoppingCart, Search, Plus, Minus, Trash2, Receipt, Printer, Package, Bluetooth } from "lucide-react";
 import { useBranding } from "@/context/BrandingContext";
 import PrintStyle from "@/components/PrintStyle";
 import { sendRaw, buildPOSReceipt } from "@/lib/escpos";
+import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 
 export default function DirectSale() {
   const { settings } = useBranding();
@@ -310,6 +311,16 @@ export default function DirectSale() {
               title="Print thermal via USB ESC/POS">
               <Printer className="size-4" />USB
             </Button>
+            {isBluetoothAvailable() && (
+              <Button variant="secondary" className="flex-1 gap-2" data-testid="ds-receipt-bt-print"
+                onClick={async () => {
+                  try { await printBluetoothRaw(buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke Bluetooth"); }
+                  catch (e) { toast.error(e.message || "Gagal print Bluetooth"); }
+                }}
+                title="Print thermal via Bluetooth">
+                <Bluetooth className="size-4" />Bluetooth
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

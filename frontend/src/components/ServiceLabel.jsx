@@ -1,11 +1,12 @@
 import { QRCodeSVG } from "qrcode.react";
 import Barcode from "react-barcode";
-import { Printer, Usb } from "lucide-react";
+import { Printer, Usb, Bluetooth } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import PrintStyle from "@/components/PrintStyle";
 import { useBranding } from "@/context/BrandingContext";
 import { sendRaw, buildServiceLabel } from "@/lib/escpos";
+import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 
 export default function ServiceLabel({ service, shopName = "Service HP", trackingBase }) {
   const { settings } = useBranding();
@@ -20,6 +21,15 @@ export default function ServiceLabel({ service, shopName = "Service HP", trackin
       toast.success("Label terkirim ke printer USB");
     } catch (e) {
       toast.error(e.message || "Gagal print USB");
+    }
+  };
+
+  const btPrintLabel = async () => {
+    try {
+      await printBluetoothRaw(buildServiceLabel(service, settings, trackUrl));
+      toast.success("Label terkirim ke printer Bluetooth");
+    } catch (e) {
+      toast.error(e.message || "Gagal print Bluetooth");
     }
   };
 
@@ -47,6 +57,7 @@ export default function ServiceLabel({ service, shopName = "Service HP", trackin
       <div className="grid grid-cols-2 gap-2 no-print">
         <Button onClick={() => window.print()} className="gap-2" data-testid="print-label-btn"><Printer className="size-4" />Cetak Biasa</Button>
         <Button variant="outline" onClick={usbPrintLabel} className="gap-2" data-testid="print-label-usb-btn" title="Print thermal via USB ESC/POS"><Usb className="size-4" />USB</Button>
+        {isBluetoothAvailable() && <Button variant="secondary" onClick={btPrintLabel} className="gap-2 col-span-2" data-testid="print-label-bt-btn" title="Print thermal via Bluetooth"><Bluetooth className="size-4" />Bluetooth</Button>}
       </div>
     </div>
   );
