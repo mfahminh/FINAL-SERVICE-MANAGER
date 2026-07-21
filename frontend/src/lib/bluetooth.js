@@ -128,10 +128,13 @@ export async function sendBluetoothRaw(characteristic, bytesData) {
     try {
       // Try with response first
       if (characteristic.properties.write) {
-        await characteristic.writeValue(chunk);
+        // Use exact ArrayBuffer slice for writeValue
+        const buf = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+        await characteristic.writeValue(buf);
       } else if (characteristic.properties.writeWithoutResponse) {
         // Without response is faster and works for most thermal printers
-        await characteristic.writeValueWithoutResponse(chunk);
+        const buf = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+        await characteristic.writeValueWithoutResponse(buf);
       } else {
         throw new Error("Characteristic tidak support write");
       }
