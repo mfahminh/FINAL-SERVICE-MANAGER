@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Trash2, Edit3, Upload } from "lucide-react";
+import { Plus, Search, AlertTriangle, Trash2, Edit3, Upload, FileJson } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
@@ -79,6 +79,45 @@ export default function Spareparts() {
     }
   };
 
+  const saveBulkCSV = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const text = await file.text();
+      const lines = text.trim().split("\n").filter(l => l.trim());
+      if (lines.length === 0) return toast.error("File CSV kosong");
+
+      const bulkItems = lines.map((line, idx) => {
+        const parts = line.split(",").map(p => p.trim());
+        if (parts.length < 8) throw new Error(`Baris ${idx + 1}: format salah (butuh 8 kolom)`);
+        return {
+          category: parts[0],
+          code: parts[1],
+          name: parts[2],
+          brand: parts[3],
+          cost_price: Number(parts[4]),
+          sell_price: Number(parts[5]),
+          stock: Number(parts[6]),
+          min_stock: Number(parts[7]),
+          location: parts[8] || ""
+        };
+      });
+
+      for (const item of bulkItems) {
+        await api.post("/spareparts", item);
+      }
+      toast.success(`${bulkItems.length} sparepart berhasil ditambahkan dari CSV`);
+      setOpen(false);
+      setTabMode("single");
+      load();
+      e.target.value = "";
+    } catch (e) {
+      toast.error(e.message || e.response?.data?.detail || "Gagal");
+      e.target.value = "";
+    }
+  };
+
   const del = async (id) => {
     if (!window.confirm("Hapus sparepart ini?")) return;
     await api.delete(`/spareparts/${id}`); toast.success("Dihapus"); load();
@@ -96,9 +135,10 @@ export default function Spareparts() {
           <DialogContent className="max-w-2xl">
             <DialogHeader><DialogTitle>{editingId ? "Edit" : "Tambah"} Sparepart</DialogTitle></DialogHeader>
             <Tabs value={tabMode} onValueChange={setTabMode} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="single">Satuan</TabsTrigger>
                 <TabsTrigger value="bulk"><Upload className="size-3.5 mr-1" />Bulk</TabsTrigger>
+                <TabsTrigger value="csv"><FileJson className="size-3.5 mr-1" />CSV</TabsTrigger>
               </TabsList>
               <TabsContent value="single" className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -121,6 +161,25 @@ export default function Spareparts() {
                   <textarea className="w-full border rounded-md p-2 text-xs font-mono resize-none mt-2" rows={8} value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} placeholder="Kategori | SK001 | Sparepart A | Merk1 | 10000 | 15000 | 50 | 10 | A1" />
                 </div>
                 <Button onClick={saveBulk} className="w-full">Simpan {bulkInput.trim().split("\n").filter(l => l.trim()).length || 0} Item</Button>
+              </TabsContent>
+              <TabsContent value="csv" className="space-y-3">
+                <div>
+                  <Label className="text-xs">Upload file CSV dengan format:</Label>
+                  <p className="text-xs text-muted-foreground mt-1">kategori,kode,nama,merk,harga_modal,harga_jual,stok,min_stok,lokasi</p>
+                  <div className="mt-3 p-4 border-2 border-dashed border-border rounded-lg">
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      onChange={saveBulkCSV}
+                      className="cursor-pointer"
+                      data-testid="csv-upload"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Contoh CSV:</p>
+                  <code className="text-[10px] block bg-muted p-2 rounded mt-1 overflow-x-auto">
+                    Kategori,SK001,Sparepart A,Merk1,10000,15000,50,10,A1
+                  </code>
+                </div>
               </TabsContent>
             </Tabs>
           </DialogContent>

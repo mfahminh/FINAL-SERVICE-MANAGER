@@ -101,10 +101,10 @@ export default function Purchases() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
           <DialogHeader><DialogTitle>{editId ? "Edit Pembelian" : "Pembelian Sparepart Baru"}</DialogTitle></DialogHeader>
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-3">
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-shrink-0 space-y-3 pb-3 border-b border-border">
               <div>
                 <Label>Supplier</Label>
                 <Select value={form.supplier_id} onValueChange={(v) => setForm({ ...form, supplier_id: v })}>
@@ -112,8 +112,10 @@ export default function Purchases() {
                   <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Item Dibeli</Label>
+              <div><Label>Item Dibeli</Label></div>
+            </div>
+            <ScrollArea className="flex-1 min-h-0 pr-4">
+              <div className="space-y-2 py-3">
                 {form.items.length === 0 && <div className="text-center py-4 text-muted-foreground text-xs border border-dashed border-border rounded-md">Belum ada item. Klik "Tambah Item".</div>}
                 {form.items.map((it, i) => (
                   <div key={it._key} className="grid grid-cols-12 gap-2 items-end p-2 rounded-md bg-muted/30">
@@ -129,14 +131,16 @@ export default function Purchases() {
                     <Button size="icon" variant="ghost" onClick={() => removeItem(i)} className="col-span-1" data-testid={`remove-${i}`}><Trash2 className="size-4 text-destructive" /></Button>
                   </div>
                 ))}
-                <Button size="sm" variant="outline" onClick={addItem} className="w-full gap-1" data-testid="add-item-btn"><Plus className="size-3" />Tambah Item</Button>
               </div>
+            </ScrollArea>
+            <div className="flex-shrink-0 pt-3 border-t border-border space-y-3">
+              <Button size="sm" variant="outline" onClick={addItem} className="w-full gap-1" data-testid="add-item-btn"><Plus className="size-3" />Tambah Item</Button>
               <div>
                 <Label>Catatan</Label>
                 <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan pembelian (opsional)" />
               </div>
             </div>
-          </ScrollArea>
+          </div>
           <div className="border-t border-border pt-3 space-y-3">
             <div className="flex justify-between">
               <span className="font-semibold">Total Pembelian</span>
