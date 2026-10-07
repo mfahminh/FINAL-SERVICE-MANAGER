@@ -7,6 +7,7 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import asyncio
 import logging
+import math
 import secrets
 import uuid
 import bcrypt
@@ -236,6 +237,10 @@ class PaymentIn(BaseModel):
     method: Literal["cash", "transfer", "qris", "ewallet"]
     type: Literal["dp", "pelunasan", "full"]
     note: Optional[str] = ""
+
+class PaymentAmountUpdate(BaseModel):
+    amount: float
+    supervisor_password: str
 
 class PickupIn(BaseModel):
     unit_ok: bool
@@ -857,6 +862,95 @@ async def create_payment(data: PaymentIn, user: dict = Depends(require_roles("ka
     await db.services.update_one({"id": data.service_id}, {"$set": {"total_paid": total_paid}})
     await audit(user, "payment", "service", data.service_id, {"amount": data.amount})
     return pay
+
+@api.patch("/payments/{payment_id}/amount")
+async def update_payment_amount(
+    payment_id: str,
+    data: PaymentAmountUpdate,
+    request: Request,
+    user: dict = Depends(require_roles("kasir", "admin", "owner")),
+):
+    if not math.isfinite(data.amount) or data.amount <= 0:
+        raise HTTPException(400, "Jumlah pembayaran harus lebih dari 0")
+    if not data.supervisor_password or len(data.supervisor_password.encode("utf-8")) > 72:
+        raise HTTPException(403, "Password owner/admin tidak valid")
+
+    ip = request.client.host if request.client else ""
+    attempt_key = f"payment-edit:{ip}:{user['id']}"
+    attempts = await db.login_attempts.find_one({"identifier": attempt_key})
+    if attempts and attempts.get("count", 0) >= 5:
+        last = datetime.fromisoformat(attempts["last_at"])
+        if datetime.now(timezone.utc) - last < timedelta(minutes=15):
+            raise HTTPException(429, "Terlalu banyak percobaan. Coba lagi nanti.")
+        await db.login_attempts.delete_one({"identifier": attempt_key})
+
+    supervisors = await db.users.find(
+        {"role": {"$in": ["owner", "admin"]}, "active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "role": 1, "password_hash": 1},
+    ).to_list(100)
+    authorized_by = None
+    for supervisor in supervisors:
+        password_hash = supervisor.get("password_hash", "")
+        try:
+            if password_hash and verify_password(data.supervisor_password, password_hash):
+                authorized_by = supervisor
+                break
+        except (TypeError, ValueError):
+            continue
+    if not authorized_by:
+        await db.login_attempts.update_one(
+            {"identifier": attempt_key},
+            {"$inc": {"count": 1}, "$set": {"last_at": now_iso()}},
+            upsert=True,
+        )
+        raise HTTPException(403, "Password owner/admin tidak valid")
+
+    await db.login_attempts.delete_one({"identifier": attempt_key})
+    payment = await db.payments.find_one({"id": payment_id})
+    if not payment:
+        raise HTTPException(404, "Pembayaran tidak ditemukan")
+    service = await db.services.find_one({"id": payment.get("service_id")})
+    if not service:
+        raise HTTPException(404, "Service pembayaran tidak ditemukan")
+
+    old_amount = payment.get("amount", 0) or 0
+    delta = data.amount - old_amount
+    updated_at = now_iso()
+    result = await db.payments.update_one(
+        {"id": payment_id, "amount": old_amount},
+        {"$set": {
+            "amount": data.amount,
+            "amount_updated_at": updated_at,
+            "amount_updated_by": user["name"],
+            "amount_authorized_by": authorized_by["name"],
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(409, "Pembayaran berubah. Muat ulang sebelum mencoba lagi")
+
+    await db.services.update_one({"id": service["id"]}, {"$inc": {"total_paid": delta}})
+    await audit(
+        user,
+        "payment_amount_update",
+        "payment",
+        payment_id,
+        {
+            "service_id": service["id"],
+            "old_amount": old_amount,
+            "new_amount": data.amount,
+            "authorized_by": {
+                "id": authorized_by["id"],
+                "name": authorized_by["name"],
+                "role": authorized_by["role"],
+            },
+        },
+    )
+    payment["amount"] = data.amount
+    payment["amount_updated_at"] = updated_at
+    payment["amount_updated_by"] = user["name"]
+    payment["amount_authorized_by"] = authorized_by["name"]
+    payment.pop("_id", None)
+    return payment
 
 # ---------- TECHNICIANS / JOB ASSIGNMENT / FINANCIAL ----------
 class SparepartCategoryIn(BaseModel):

@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Trash2, Edit3 } from "lucide-react";
+import { Plus, Search, AlertTriangle, Trash2, Edit3, Upload, FileJson } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
@@ -21,6 +22,8 @@ export default function Spareparts() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState(null);
+  const [tabMode, setTabMode] = useState("single");
+  const [bulkInput, setBulkInput] = useState("");
 
   const load = async () => {
     const r = await api.get(`/spareparts?q=${q}&low_stock=${low}`);
@@ -42,6 +45,79 @@ export default function Spareparts() {
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal"); }
   };
 
+  const saveBulk = async () => {
+    try {
+      const lines = bulkInput.trim().split("\n").filter(l => l.trim());
+      if (lines.length === 0) return toast.error("Input tidak boleh kosong");
+
+      const bulkItems = lines.map((line, idx) => {
+        const parts = line.split("|").map(p => p.trim());
+        if (parts.length < 8) throw new Error(`Baris ${idx + 1}: format salah (butuh 8 field)`);
+        return {
+          category: parts[0],
+          code: parts[1],
+          name: parts[2],
+          brand: parts[3],
+          cost_price: Number(parts[4]),
+          sell_price: Number(parts[5]),
+          stock: Number(parts[6]),
+          min_stock: Number(parts[7]),
+          location: parts[8] || ""
+        };
+      });
+
+      for (const item of bulkItems) {
+        await api.post("/spareparts", item);
+      }
+      toast.success(`${bulkItems.length} sparepart berhasil ditambahkan`);
+      setBulkInput("");
+      setOpen(false);
+      setTabMode("single");
+      load();
+    } catch (e) {
+      toast.error(e.message || e.response?.data?.detail || "Gagal");
+    }
+  };
+
+  const saveBulkCSV = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const text = await file.text();
+      const lines = text.trim().split("\n").filter(l => l.trim());
+      if (lines.length === 0) return toast.error("File CSV kosong");
+
+      const bulkItems = lines.map((line, idx) => {
+        const parts = line.split(",").map(p => p.trim());
+        if (parts.length < 8) throw new Error(`Baris ${idx + 1}: format salah (butuh 8 kolom)`);
+        return {
+          category: parts[0],
+          code: parts[1],
+          name: parts[2],
+          brand: parts[3],
+          cost_price: Number(parts[4]),
+          sell_price: Number(parts[5]),
+          stock: Number(parts[6]),
+          min_stock: Number(parts[7]),
+          location: parts[8] || ""
+        };
+      });
+
+      for (const item of bulkItems) {
+        await api.post("/spareparts", item);
+      }
+      toast.success(`${bulkItems.length} sparepart berhasil ditambahkan dari CSV`);
+      setOpen(false);
+      setTabMode("single");
+      load();
+      e.target.value = "";
+    } catch (e) {
+      toast.error(e.message || e.response?.data?.detail || "Gagal");
+      e.target.value = "";
+    }
+  };
+
   const del = async (id) => {
     if (!window.confirm("Hapus sparepart ini?")) return;
     await api.delete(`/spareparts/${id}`); toast.success("Dihapus"); load();
@@ -54,24 +130,58 @@ export default function Spareparts() {
           <div className="text-[11px] uppercase tracking-[0.25em] text-primary font-semibold">Inventory</div>
           <h1 className="font-display font-black text-3xl tracking-tight">Sparepart</h1>
         </div>
-        {!isTeknisi && <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setForm(empty); setEditingId(null); } }}>
+        {!isTeknisi && <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setForm(empty); setEditingId(null); setBulkInput(""); setTabMode("single"); } }}>
           <DialogTrigger asChild><Button className="gap-2" data-testid="add-sparepart-btn"><Plus className="size-4" />Tambah</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader><DialogTitle>{editingId ? "Edit" : "Tambah"} Sparepart</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Kategori</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} data-testid="sp-category" /></div>
-                <div><Label>Kode</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} data-testid="sp-code" /></div>
-                <div className="col-span-2"><Label>Nama</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="sp-name" /></div>
-                <div><Label>Merk</Label><Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></div>
-                <div><Label>Lokasi Rak</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></div>
-                <div><Label>Harga Modal</Label><Input type="number" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} data-testid="sp-cost" /></div>
-                <div><Label>Harga Jual</Label><Input type="number" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} data-testid="sp-sell" /></div>
-                <div><Label>Stok</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} data-testid="sp-stock" /></div>
-                <div><Label>Min Stok</Label><Input type="number" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} /></div>
-              </div>
-              <Button onClick={save} className="w-full" data-testid="save-sparepart-btn">Simpan</Button>
-            </div>
+            <Tabs value={tabMode} onValueChange={setTabMode} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="single">Satuan</TabsTrigger>
+                <TabsTrigger value="bulk"><Upload className="size-3.5 mr-1" />Bulk</TabsTrigger>
+                <TabsTrigger value="csv"><FileJson className="size-3.5 mr-1" />CSV</TabsTrigger>
+              </TabsList>
+              <TabsContent value="single" className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Kategori</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} data-testid="sp-category" /></div>
+                  <div><Label>Kode</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} data-testid="sp-code" /></div>
+                  <div className="col-span-2"><Label>Nama</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="sp-name" /></div>
+                  <div><Label>Merk</Label><Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></div>
+                  <div><Label>Lokasi Rak</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></div>
+                  <div><Label>Harga Modal</Label><Input type="number" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} data-testid="sp-cost" /></div>
+                  <div><Label>Harga Jual</Label><Input type="number" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} data-testid="sp-sell" /></div>
+                  <div><Label>Stok</Label><Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} data-testid="sp-stock" /></div>
+                  <div><Label>Min Stok</Label><Input type="number" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} /></div>
+                </div>
+                <Button onClick={save} className="w-full" data-testid="save-sparepart-btn">Simpan</Button>
+              </TabsContent>
+              <TabsContent value="bulk" className="space-y-3">
+                <div>
+                  <Label className="text-xs">Format: Kategori | Kode | Nama | Merk | Harga Modal | Harga Jual | Stok | Min Stok | Lokasi</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Satu item per baris, pisahkan dengan |</p>
+                  <textarea className="w-full border rounded-md p-2 text-xs font-mono resize-none mt-2" rows={8} value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} placeholder="Kategori | SK001 | Sparepart A | Merk1 | 10000 | 15000 | 50 | 10 | A1" />
+                </div>
+                <Button onClick={saveBulk} className="w-full">Simpan {bulkInput.trim().split("\n").filter(l => l.trim()).length || 0} Item</Button>
+              </TabsContent>
+              <TabsContent value="csv" className="space-y-3">
+                <div>
+                  <Label className="text-xs">Upload file CSV dengan format:</Label>
+                  <p className="text-xs text-muted-foreground mt-1">kategori,kode,nama,merk,harga_modal,harga_jual,stok,min_stok,lokasi</p>
+                  <div className="mt-3 p-4 border-2 border-dashed border-border rounded-lg">
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      onChange={saveBulkCSV}
+                      className="cursor-pointer"
+                      data-testid="csv-upload"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Contoh CSV:</p>
+                  <code className="text-[10px] block bg-muted p-2 rounded mt-1 overflow-x-auto">
+                    Kategori,SK001,Sparepart A,Merk1,10000,15000,50,10,A1
+                  </code>
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>}
       </div>

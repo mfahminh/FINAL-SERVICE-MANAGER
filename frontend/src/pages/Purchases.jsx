@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
@@ -100,39 +101,48 @@ export default function Purchases() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
           <DialogHeader><DialogTitle>{editId ? "Edit Pembelian" : "Pembelian Sparepart Baru"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Supplier</Label>
-              <Select value={form.supplier_id} onValueChange={(v) => setForm({ ...form, supplier_id: v })}>
-                <SelectTrigger data-testid="pur-supplier"><SelectValue placeholder="Pilih supplier..." /></SelectTrigger>
-                <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-shrink-0 space-y-3 pb-3 border-b border-border">
+              <div>
+                <Label>Supplier</Label>
+                <Select value={form.supplier_id} onValueChange={(v) => setForm({ ...form, supplier_id: v })}>
+                  <SelectTrigger data-testid="pur-supplier"><SelectValue placeholder="Pilih supplier..." /></SelectTrigger>
+                  <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div><Label>Item Dibeli</Label></div>
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between"><Label>Item Dibeli</Label><Button size="sm" variant="outline" onClick={addItem} data-testid="add-item-btn"><Plus className="size-3 mr-1" />Tambah Item</Button></div>
-              {form.items.length === 0 && <div className="text-center py-4 text-muted-foreground text-xs border border-dashed border-border rounded-md">Belum ada item. Klik "Tambah Item".</div>}
-              {form.items.map((it, i) => (
-                <div key={it._key} className="grid grid-cols-12 gap-2 items-end p-2 rounded-md bg-muted/30">
-                  <div className="col-span-6">
-                    <Label className="text-[10px]">Sparepart</Label>
-                    <Select value={it.sparepart_id} onValueChange={(v) => updateItem(i, "sparepart_id", v)}>
-                      <SelectTrigger data-testid={`part-select-${i}`}><SelectValue placeholder="Pilih sparepart" /></SelectTrigger>
-                      <SelectContent>{spareparts.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} <span className="text-muted-foreground text-xs">({s.code})</span></SelectItem>)}</SelectContent>
-                    </Select>
+            <ScrollArea className="flex-1 min-h-0 pr-4">
+              <div className="space-y-2 py-3">
+                {form.items.length === 0 && <div className="text-center py-4 text-muted-foreground text-xs border border-dashed border-border rounded-md">Belum ada item. Klik "Tambah Item".</div>}
+                {form.items.map((it, i) => (
+                  <div key={it._key} className="grid grid-cols-12 gap-2 items-end p-2 rounded-md bg-muted/30">
+                    <div className="col-span-6">
+                      <Label className="text-[10px]">Sparepart</Label>
+                      <Select value={it.sparepart_id} onValueChange={(v) => updateItem(i, "sparepart_id", v)}>
+                        <SelectTrigger data-testid={`part-select-${i}`}><SelectValue placeholder="Pilih sparepart" /></SelectTrigger>
+                        <SelectContent>{spareparts.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} <span className="text-muted-foreground text-xs">({s.code})</span></SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2"><Label className="text-[10px]">Qty</Label><Input type="number" value={it.qty} onChange={(e) => updateItem(i, "qty", e.target.value)} data-testid={`qty-${i}`} /></div>
+                    <div className="col-span-3"><Label className="text-[10px]">Harga (Modal)</Label><Input type="number" value={it.price} onChange={(e) => updateItem(i, "price", e.target.value)} data-testid={`price-${i}`} /></div>
+                    <Button size="icon" variant="ghost" onClick={() => removeItem(i)} className="col-span-1" data-testid={`remove-${i}`}><Trash2 className="size-4 text-destructive" /></Button>
                   </div>
-                  <div className="col-span-2"><Label className="text-[10px]">Qty</Label><Input type="number" value={it.qty} onChange={(e) => updateItem(i, "qty", e.target.value)} data-testid={`qty-${i}`} /></div>
-                  <div className="col-span-3"><Label className="text-[10px]">Harga (Modal)</Label><Input type="number" value={it.price} onChange={(e) => updateItem(i, "price", e.target.value)} data-testid={`price-${i}`} /></div>
-                  <Button size="icon" variant="ghost" onClick={() => removeItem(i)} className="col-span-1" data-testid={`remove-${i}`}><Trash2 className="size-4 text-destructive" /></Button>
-                </div>
-              ))}
+                ))}
+              </div>
+            </ScrollArea>
+            <div className="flex-shrink-0 pt-3 border-t border-border space-y-3">
+              <Button size="sm" variant="outline" onClick={addItem} className="w-full gap-1" data-testid="add-item-btn"><Plus className="size-3" />Tambah Item</Button>
+              <div>
+                <Label>Catatan</Label>
+                <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan pembelian (opsional)" />
+              </div>
             </div>
-            <div>
-              <Label>Catatan</Label>
-              <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan pembelian (opsional)" />
-            </div>
-            <div className="flex justify-between border-t border-border pt-3">
+          </div>
+          <div className="border-t border-border pt-3 space-y-3">
+            <div className="flex justify-between">
               <span className="font-semibold">Total Pembelian</span>
               <span className="font-mono font-bold text-lg text-primary">{fmtIDR(total)}</span>
             </div>
