@@ -2234,7 +2234,7 @@ async def reset_database(data: ResetDBIn, user: dict = Depends(require_roles("ow
         r = await db.settings.delete_many({})
         counts["settings"] = r.deleted_count
     # Re-seed defaults
-    await seed()
+    await seed(force_default_users=True)
     await audit(user, "reset_database", "system", "main", counts)
     logger.warning(f"[RESET DB] by {user['name']} - counts: {counts}")
     return {"ok": True, "deleted_counts": counts, "message": "Database telah di-reset. Data default sudah dibuat ulang."}
@@ -2533,7 +2533,7 @@ async def notifications_counts(user: dict = Depends(get_current_user)):
     return out
 
 # ---------- Seed ----------
-async def seed():
+async def seed(force_default_users: bool = False):
     await db.users.create_index("email", unique=True)
     await db.services.create_index("service_number", unique=True)
     await db.customers.create_index("phone")
@@ -2545,13 +2545,23 @@ async def seed():
         ("teknisi@servicehp.id", "teknisi123", "Andi Teknisi", "teknisi"),
         ("kasir@servicehp.id", "kasir123", "Rina Kasir", "kasir"),
     ]
-    for email, pwd, name, role in default_users:
-        existing = await db.users.find_one({"email": email})
-        if not existing:
-            await db.users.insert_one({
-                "id": gen_id(), "email": email, "password_hash": hash_password(pwd),
-                "name": name, "role": role, "phone": "", "active": True, "created_at": now_iso()
-            })
+    users_seed_marker = await db.app_metadata.find_one({"id": "default_users_seeded"})
+    if force_default_users or not users_seed_marker:
+        should_seed_users = force_default_users or await db.users.count_documents({}) == 0
+        if should_seed_users:
+            for email, pwd, name, role in default_users:
+                existing = await db.users.find_one({"email": email})
+                if not existing:
+                    await db.users.insert_one({
+                        "id": gen_id(), "email": email, "password_hash": hash_password(pwd),
+                        "name": name, "role": role, "phone": "", "active": True, "created_at": now_iso()
+                    })
+        if not users_seed_marker:
+            await db.app_metadata.update_one(
+                {"id": "default_users_seeded"},
+                {"$setOnInsert": {"initialized_at": now_iso()}},
+                upsert=True,
+            )
 
     if await db.customers.count_documents({}) == 0:
         cust_data = [

@@ -6,9 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Plus, Search } from "lucide-react";
 
 import { useAuth } from "@/context/AuthContext";
+
+const paymentStatus = (service) => {
+  const paid = Math.max(0, Number(service.total_paid) || 0);
+  const due = Math.max(0, Number(service.final_cost ?? service.estimated_cost) || 0);
+  if (paid === 0) return { label: "Belum bayar", className: "border-red-200 bg-red-50 text-red-700" };
+  if (paid >= due) return { label: "Lunas", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  return { label: "Belum lunas", className: "border-amber-200 bg-amber-50 text-amber-700" };
+};
 
 export default function Services() {
   const { user } = useAuth();
@@ -60,21 +69,23 @@ export default function Services() {
               <TableHead>Pelanggan</TableHead>
               <TableHead className="hidden md:table-cell">Device</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Pembayaran</TableHead>
               <TableHead className="hidden lg:table-cell">Estimasi</TableHead>
               <TableHead className="hidden md:table-cell">Tanggal</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
+            {items.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
             {items.map((s) => (
               <TableRow key={s.id} className="cursor-pointer hover:bg-accent/50" onClick={() => navigate(`/services/${s.id}`)} data-testid={`service-row-${s.service_number}`}>
-                <TableCell className="font-mono text-sm font-semibold text-primary">{s.service_number}</TableCell>
+                <TableCell className="font-mono text-xs font-semibold text-primary">{s.service_number}</TableCell>
                 <TableCell>
                   <div className="font-semibold">{s.customer_name}</div>
                   <div className="text-xs text-muted-foreground font-mono">{maskPhone(s.customer_phone, user?.role)}</div>
                 </TableCell>
-                <TableCell className="hidden md:table-cell">{s.brand} {s.model}<div className="text-xs text-muted-foreground font-mono">{s.imei1}</div></TableCell>
+                <TableCell className="hidden md:table-cell text-sm">{s.brand} {s.model}<div className="text-xs text-muted-foreground font-mono">{s.imei1}</div></TableCell>
                 <TableCell><span className={`status-pill ${STATUS_COLORS[s.status] || ""}`}>{s.status}</span></TableCell>
+                <TableCell><Badge variant="outline" className={paymentStatus(s).className}>{paymentStatus(s).label}</Badge></TableCell>
                 <TableCell className="hidden lg:table-cell font-mono">{fmtIDR(s.estimated_cost)}</TableCell>
                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(s.created_at)}</TableCell>
               </TableRow>
