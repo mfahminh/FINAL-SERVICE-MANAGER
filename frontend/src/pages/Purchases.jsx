@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import SearchableSparepartSelect from "@/components/SearchableSparepartSelect";
 
 const emptyForm = { supplier_id: "", items: [], note: "" };
 
@@ -121,10 +122,15 @@ export default function Purchases() {
                   <div key={it._key} className="grid grid-cols-12 gap-2 items-end p-2 rounded-md bg-muted/30">
                     <div className="col-span-6">
                       <Label className="text-[10px]">Sparepart</Label>
-                      <Select value={it.sparepart_id} onValueChange={(v) => updateItem(i, "sparepart_id", v)}>
-                        <SelectTrigger data-testid={`part-select-${i}`}><SelectValue placeholder="Pilih sparepart" /></SelectTrigger>
-                        <SelectContent>{spareparts.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} <span className="text-muted-foreground text-xs">({s.code})</span></SelectItem>)}</SelectContent>
-                      </Select>
+                      <SearchableSparepartSelect
+                        items={spareparts}
+                        value={it.sparepart_id}
+                        onValueChange={(v) => updateItem(i, "sparepart_id", v)}
+                        getSearchText={(s) => `${s.name} ${s.code} ${s.brand || ""}`}
+                        getOptionLabel={(s) => `${s.name} (${s.code})`}
+                        renderOption={(s) => <span>{s.name} <span className="text-muted-foreground text-xs">({s.code})</span></span>}
+                        testId={`part-select-${i}`}
+                      />
                     </div>
                     <div className="col-span-2"><Label className="text-[10px]">Qty</Label><Input type="number" value={it.qty} onChange={(e) => updateItem(i, "qty", e.target.value)} data-testid={`qty-${i}`} /></div>
                     <div className="col-span-3"><Label className="text-[10px]">Harga (Modal)</Label><Input type="number" value={it.price} onChange={(e) => updateItem(i, "price", e.target.value)} data-testid={`price-${i}`} /></div>

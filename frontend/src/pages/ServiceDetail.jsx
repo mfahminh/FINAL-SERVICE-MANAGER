@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
 import PrintStyle from "@/components/PrintStyle";
+import SearchableSparepartSelect from "@/components/SearchableSparepartSelect";
 import { sendRaw, buildFinalServiceNota, buildServiceIntakeReceipt } from "@/lib/escpos";
 import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 import { QC_CHECKLIST, QC_ITEMS_FLAT } from "@/constants/qcChecklist";
@@ -433,10 +434,16 @@ export default function ServiceDetail() {
                   <DialogContent>
                     <DialogHeader><DialogTitle>Pakai Sparepart</DialogTitle></DialogHeader>
                     <div className="space-y-3">
-                      <Select value={part.sparepart_id} onValueChange={(v) => setPart({ ...part, sparepart_id: v })}>
-                        <SelectTrigger data-testid="part-select"><SelectValue placeholder="Pilih sparepart..." /></SelectTrigger>
-                        <SelectContent>{spareparts.map((s) => <SelectItem key={s.id} value={s.id} disabled={s.stock <= 0}>{s.name} • Stok: {s.stock} • {fmtIDR(s.sell_price)}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <SearchableSparepartSelect
+                        items={spareparts}
+                        value={part.sparepart_id}
+                        onValueChange={(v) => setPart({ ...part, sparepart_id: v })}
+                        getSearchText={(s) => `${s.name} ${s.code} ${s.brand || ""}`}
+                        getOptionLabel={(s) => `${s.name} • Stok: ${s.stock} • ${fmtIDR(s.sell_price)}`}
+                        renderOption={(s) => <span>{s.name} • Stok: {s.stock} • {fmtIDR(s.sell_price)}</span>}
+                        isDisabled={(s) => s.stock <= 0}
+                        testId="part-select"
+                      />
                       <div><Label>Qty</Label><Input type="number" value={part.qty} onChange={(e) => setPart({ ...part, qty: e.target.value })} data-testid="part-qty" /></div>
                       <Button onClick={usePart} className="w-full" data-testid="submit-part-btn">Gunakan</Button>
                     </div>
