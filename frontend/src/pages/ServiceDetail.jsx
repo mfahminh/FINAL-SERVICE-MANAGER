@@ -331,6 +331,25 @@ export default function ServiceDetail() {
               <div><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Warna</div><div>{svc.color || "-"}</div></div>
               <div><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Kelengkapan</div><div className="text-xs">{svc.accessories?.join(", ") || "-"}</div></div>
               <div className="col-span-full"><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Keluhan</div><div>{svc.complaint}</div></div>
+              {(svc.device_password || svc.pin || svc.pattern) && (
+                <div className="col-span-full border-t border-border pt-3">
+                  <div className="text-[10px] uppercase text-muted-foreground tracking-wider mb-2">Akses Device</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Password HP</div>
+                      <div className="font-mono break-all" data-testid="device-password-display">{svc.device_password || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">PIN</div>
+                      <div className="font-mono break-all" data-testid="device-pin-display">{svc.pin || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Pola</div>
+                      <div className="font-mono break-all" data-testid="device-pattern-display">{svc.pattern || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 

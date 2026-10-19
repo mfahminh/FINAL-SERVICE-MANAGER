@@ -68,6 +68,7 @@ export default function Services() {
               <TableHead>No. Service</TableHead>
               <TableHead>Pelanggan</TableHead>
               <TableHead className="hidden md:table-cell">Device</TableHead>
+              <TableHead className="hidden lg:table-cell">Keluhan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Pembayaran</TableHead>
               <TableHead className="hidden lg:table-cell">Estimasi</TableHead>
@@ -75,7 +76,7 @@ export default function Services() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
+            {items.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
             {items.map((s) => (
               <TableRow key={s.id} className="cursor-pointer hover:bg-accent/50" onClick={() => navigate(`/services/${s.id}`)} data-testid={`service-row-${s.service_number}`}>
                 <TableCell className="font-mono text-xs font-semibold text-primary">{s.service_number}</TableCell>
@@ -84,6 +85,9 @@ export default function Services() {
                   <div className="text-xs text-muted-foreground font-mono">{maskPhone(s.customer_phone, user?.role)}</div>
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-sm">{s.brand} {s.model}<div className="text-xs text-muted-foreground font-mono">{s.imei1}</div></TableCell>
+                <TableCell className="hidden lg:table-cell max-w-[220px]">
+                  <div className="line-clamp-2 text-sm" title={s.complaint || ""}>{s.complaint || "-"}</div>
+                </TableCell>
                 <TableCell><span className={`status-pill ${STATUS_COLORS[s.status] || ""}`}>{s.status}</span></TableCell>
                 <TableCell><Badge variant="outline" className={paymentStatus(s).className}>{paymentStatus(s).label}</Badge></TableCell>
                 <TableCell className="hidden lg:table-cell font-mono">{fmtIDR(s.estimated_cost)}</TableCell>
