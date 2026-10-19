@@ -87,6 +87,20 @@ def create_access_token(user_id: str, email: str, role: str) -> str:
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def service_completion_at(service: dict) -> str:
+    completed_at = service.get("completed_at")
+    if completed_at:
+        return completed_at
+    for entry in reversed(service.get("status_history") or []):
+        if entry.get("status") == "Selesai" and entry.get("at"):
+            return entry["at"]
+    return service.get("finished_at") or ""
+
+def service_completed_in_period(service: dict, start: str, end: str) -> bool:
+    completed_at = service_completion_at(service)
+    completion_date = completed_at[:10]
+    return bool(completion_date and start <= completion_date <= end)
+
 def gen_id() -> str:
     return str(uuid.uuid4())
 
@@ -580,8 +594,11 @@ async def update_status(sid: str, data: StatusUpdate, user: dict = Depends(requi
     s = await db.services.find_one({"id": sid})
     if not s: raise HTTPException(404)
     history = s.get("status_history", [])
-    history.append({"status": data.status, "note": data.note or "", "by": user["name"], "at": now_iso()})
+    status_at = now_iso()
+    history.append({"status": data.status, "note": data.note or "", "by": user["name"], "at": status_at})
     update = {"status": data.status, "status_history": history, "updated_at": now_iso()}
+    if data.status == "Selesai":
+        update["completed_at"] = status_at
 
     # If cancelled, handle sparepart choice
     if data.status == "Dibatalkan":
@@ -800,9 +817,11 @@ async def submit_qc(sid: str, data: QCCheckIn, user: dict = Depends(require_role
 
     history = s.get("status_history", [])
     if all_ok:
-        history.append({"status": "Selesai", "note": "QC PASS - siap diambil", "by": user["name"], "at": now_iso()})
+        completed_at = now_iso()
+        history.append({"status": "Selesai", "note": "QC PASS - siap diambil", "by": user["name"], "at": completed_at})
         update = {
             "status": "Selesai",
+            "completed_at": completed_at,
             "qc_result": qc_result,
             "qc_history": qc_history,
             "qc_passed": True,
@@ -1125,13 +1144,26 @@ async def my_jobs(period: str = "all", user: dict = Depends(get_current_user)):
     if not tech: return []
     q = {"assigned_technician_id": tech["id"]}
     now = datetime.now(timezone.utc)
+    period_start = None
+    period_end = now.strftime("%Y-%m-%d")
     if period == "today":
-        q["assigned_at"] = {"$regex": f"^{now.strftime('%Y-%m-%d')}"}
+        period_start = period_end
     elif period == "week":
-        q["assigned_at"] = {"$gte": (now - timedelta(days=7)).isoformat()}
+        period_start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
     elif period == "month":
-        q["assigned_at"] = {"$regex": f"^{now.strftime('%Y-%m')}"}
+        period_start = now.strftime("%Y-%m-01")
     items = await db.services.find(q, {"_id": 0}).sort("assigned_at", -1).to_list(500)
+    if period_start:
+        filtered_items = []
+        for item in items:
+            if item.get("status") in ("Selesai", "Sudah Diambil"):
+                include = service_completed_in_period(item, period_start, period_end)
+            else:
+                assigned_date = (item.get("assigned_at") or "")[:10]
+                include = bool(assigned_date and period_start <= assigned_date <= period_end)
+            if include:
+                filtered_items.append(item)
+        items = filtered_items
     pct = tech.get("commission_percent", 0) / 100
     for it in items:
         # Komisi teknisi = persen komisi × biaya jasa (service_fee)
@@ -1230,7 +1262,6 @@ async def report_technicians(user: dict = Depends(require_roles("owner", "admin"
 async def report_technicians_profit(start: Optional[str] = None, end: Optional[str] = None, technician_id: Optional[str] = None, user: dict = Depends(require_roles("owner", "admin"))):
     if not start: start = datetime.now(timezone.utc).strftime("%Y-%m-01")
     if not end: end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    end_dt = end + "T23:59:59"
     techs = await db.technicians.find({}, {"_id": 0}).to_list(500)
     if technician_id:
         techs = [t for t in techs if t["id"] == technician_id]
@@ -1239,8 +1270,8 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
         svcs = await db.services.find({
             "assigned_technician_id": t["id"],
             "status": {"$in": ["Selesai", "Sudah Diambil"]},
-            "created_at": {"$gte": start, "$lte": end_dt},
         }, {"_id": 0}).to_list(2000)
+        svcs = [s for s in svcs if service_completed_in_period(s, start, end)]
         pct = t.get("commission_percent", 0) / 100
         detail = []
         total_fee = 0
@@ -1257,6 +1288,7 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
                 "brand": s.get("brand"),
                 "model": s.get("model"),
                 "created_at": s.get("created_at"),
+                "completed_at": service_completion_at(s),
                 "final_cost": s.get("final_cost", 0) or 0,
                 "service_fee": fee,
                 "commission": comm,
@@ -1278,12 +1310,14 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
 async def technician_salary_slip(tid: str, start: str, end: str, user: dict = Depends(require_roles("owner", "admin"))):
     tech = await db.technicians.find_one({"id": tid}, {"_id": 0})
     if not tech: raise HTTPException(404, "Teknisi tidak ditemukan")
-    end_dt = end + "T23:59:59"
     svcs = await db.services.find({
         "assigned_technician_id": tid,
         "status": {"$in": ["Selesai", "Sudah Diambil"]},
-        "created_at": {"$gte": start, "$lte": end_dt},
-    }, {"_id": 0}).sort("created_at", 1).to_list(2000)
+    }, {"_id": 0}).to_list(2000)
+    svcs = sorted(
+        (s for s in svcs if service_completed_in_period(s, start, end)),
+        key=service_completion_at,
+    )
     pct = tech.get("commission_percent", 0) / 100
     detail = []
     total_fee = 0
@@ -1295,7 +1329,7 @@ async def technician_salary_slip(tid: str, start: str, end: str, user: dict = De
         total_commission += comm
         detail.append({
             "service_number": s.get("service_number"),
-            "date": s.get("created_at"),
+            "date": service_completion_at(s),
             "customer_name": s.get("customer_name"),
             "brand_model": f"{s.get('brand','')} {s.get('model','')}".strip(),
             "service_fee": fee,
@@ -1995,8 +2029,8 @@ async def export_report(
             svcs = await db.services.find({
                 "assigned_technician_id": t["id"],
                 "status": {"$in": ["Selesai", "Sudah Diambil"]},
-                "created_at": {"$gte": start, "$lte": end_dt},
             }, {"_id": 0}).to_list(2000)
+            svcs = [s for s in svcs if service_completed_in_period(s, start, end)]
             pct = t.get("commission_percent", 0) / 100
             total_fee = sum(s.get("service_fee", s.get("estimated_cost", 0) or 0) or 0 for s in svcs)
             comm = round(total_fee * pct)
@@ -2014,8 +2048,11 @@ async def export_report(
         svcs = await db.services.find({
             "assigned_technician_id": technician_id,
             "status": {"$in": ["Selesai", "Sudah Diambil"]},
-            "created_at": {"$gte": start, "$lte": end_dt},
-        }, {"_id": 0}).sort("created_at", 1).to_list(2000)
+        }, {"_id": 0}).to_list(2000)
+        svcs = sorted(
+            (s for s in svcs if service_completed_in_period(s, start, end)),
+            key=service_completion_at,
+        )
         title = f"Slip Gaji Teknisi — {tech['name']}"
         meta["Teknisi"] = tech["name"]
         meta["Persen Komisi"] = f"{tech.get('commission_percent',0)}%"
@@ -2028,7 +2065,7 @@ async def export_report(
             total_fee += fee
             total_comm += comm
             rows.append([
-                (s.get("created_at") or "")[:10],
+                service_completion_at(s)[:10],
                 s.get("service_number", ""),
                 s.get("customer_name", ""),
                 f"{s.get('brand','')} {s.get('model','')}".strip(),
