@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useBranding } from "@/context/BrandingContext";
+import { getPrintoutConfig } from "@/lib/printoutSettings";
 
 /**
  * Inject dynamic @page CSS untuk thermal printing.
@@ -12,7 +13,7 @@ import { useBranding } from "@/context/BrandingContext";
  * targetId : string id element yang di-cetak (mis. "nota-final-print")
  * kind     : "nota" | "label" | "qr"
  */
-export default function PrintStyle({ targetId, kind = "nota" }) {
+export default function PrintStyle({ targetId, kind = "nota", profileKey = "service_final" }) {
   const { settings } = useBranding();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -34,6 +35,7 @@ export default function PrintStyle({ targetId, kind = "nota" }) {
       ? '"Courier New", ui-monospace, SFMono-Regular, Menlo, monospace'
       : 'ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif';
     const hideBorders = settings?.printer_hide_borders !== false;
+    const design = getPrintoutConfig(settings, profileKey).design || "professional";
 
     const isA4 = paperWidth.toUpperCase() === "A4";
     const pageSize = isA4 ? "A4" : `${paperWidth} auto`;
@@ -142,18 +144,33 @@ export default function PrintStyle({ targetId, kind = "nota" }) {
         #${targetId} svg { max-width: 100% !important; height: auto !important; }
         /* Font-mono jangan pakai variable width */
         #${targetId} .font-mono { font-family: ${family} !important; }
+        #${targetId} .print-logo {
+          max-width: 28mm !important;
+          max-height: 18mm !important;
+          object-fit: contain !important;
+        }
+        #${targetId} .printout-header-professional {
+          border-bottom: 0.3mm solid #d4d4d8;
+          padding-bottom: 2mm;
+          margin-bottom: 2mm;
+        }
+        #${targetId} .printout-header-classic { font-family: "Courier New", monospace !important; }
+        #${targetId} .printout-header-minimal { border: 0 !important; padding-bottom: 0 !important; }
+        #${targetId}[data-print-design="minimal"] { border: 0 !important; }
       }
     `;
 
     const styleEl = document.createElement("style");
     styleEl.setAttribute("data-print-style", targetId);
+    const printTarget = document.getElementById(targetId);
+    if (printTarget) printTarget.setAttribute("data-print-design", design);
     styleEl.textContent = css;
     document.head.appendChild(styleEl);
 
     return () => {
       if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
     };
-  }, [targetId, kind, settings]);
+  }, [targetId, kind, profileKey, settings]);
 
   return null;
 }

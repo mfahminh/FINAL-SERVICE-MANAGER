@@ -14,6 +14,7 @@ import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send, Ruler, Usb
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { pickPrinter, getSavedPrinterInfo, clearSavedPrinter, sendRaw, buildPOSReceipt, buildServiceIntakeReceipt } from "@/lib/escpos";
+import PrintoutSettings from "@/components/PrintoutSettings";
 
 export default function Settings() {
   const [s, setS] = useState(null);
@@ -39,7 +40,7 @@ export default function Settings() {
   };
   const testUsbPrint = async () => {
     try {
-      await sendRaw(buildPOSReceipt({
+      await sendRaw(await buildPOSReceipt({
         sale_number: "TEST-001", created_at: new Date().toISOString(),
         items: [{ name: "Test Printer", qty: 1, price: 1000 }],
         total: 1000, paid: 1000,
@@ -117,10 +118,13 @@ export default function Settings() {
       <Card className="p-5 border border-border space-y-4">
         <h3 className="font-display font-bold text-lg">Branding</h3>
         <div className="flex items-center gap-4">
-          {s.logo && <img src={s.logo} alt="logo" className="size-16 rounded-lg object-cover border border-border" />}
+          {s.logo && <img src={s.logo} alt="logo" className="size-16 rounded-lg object-contain border border-border bg-white p-1" />}
           <div>
             <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" className="hidden" onChange={onUpload} data-testid="logo-upload-input" />
-            <Button variant="outline" onClick={() => fileRef.current?.click()} className="gap-2" data-testid="upload-logo-btn"><Upload className="size-4" />Upload Logo</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => fileRef.current?.click()} className="gap-2" data-testid="upload-logo-btn"><Upload className="size-4" />Upload Logo</Button>
+              {s.logo && <Button variant="ghost" onClick={() => setS({ ...s, logo: "" })} className="gap-2 text-muted-foreground" data-testid="remove-logo-btn"><Trash2 className="size-4" />Hapus Logo</Button>}
+            </div>
             <div className="text-xs text-muted-foreground mt-1">PNG/SVG/JPG/WEBP, max 5MB</div>
           </div>
         </div>
@@ -155,6 +159,8 @@ export default function Settings() {
         <div><Label>Alamat</Label><Textarea rows={2} value={s.address || ""} onChange={(e) => setS({ ...s, address: e.target.value })} /></div>
         <div><Label>Template WhatsApp</Label><Textarea rows={3} value={s.wa_template || ""} onChange={(e) => setS({ ...s, wa_template: e.target.value })} placeholder="Halo {nama}, service {nomor} ..." /></div>
       </Card>
+
+      <PrintoutSettings settings={s} onChange={setS} onSave={save} />
 
       {/* Thermal Printer Configuration */}
       <Card className="p-5 border border-border space-y-4" data-testid="thermal-printer-card">
@@ -546,4 +552,3 @@ export default function Settings() {
     </div>
   );
 }
-

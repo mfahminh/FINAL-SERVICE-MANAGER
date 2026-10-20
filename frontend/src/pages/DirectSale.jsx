@@ -11,11 +11,14 @@ import { toast } from "sonner";
 import { ShoppingCart, Search, Plus, Minus, Trash2, Receipt, Printer, Package, Bluetooth } from "lucide-react";
 import { useBranding } from "@/context/BrandingContext";
 import PrintStyle from "@/components/PrintStyle";
+import { PrintoutFooter, PrintoutHeader } from "@/components/PrintoutHeader";
+import { getPrintoutConfig } from "@/lib/printoutSettings";
 import { sendRaw, buildPOSReceipt } from "@/lib/escpos";
 import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 
 export default function DirectSale() {
   const { settings } = useBranding();
+  const receiptPrint = getPrintoutConfig(settings, "pos_sale");
   const [spareparts, setSpareparts] = useState([]);
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState([]); // {sparepart_id, name, code, qty, price, stock}
@@ -264,23 +267,15 @@ export default function DirectSale() {
           <DialogHeader><DialogTitle>Nota Penjualan</DialogTitle></DialogHeader>
           {lastSale && (
             <div id="ds-receipt-print" className="border border-border rounded-md p-4 bg-white text-zinc-900 text-xs">
-              {receiptOpen && <PrintStyle targetId="ds-receipt-print" kind="nota" />}
-              <div className="text-center">
-                <div className="font-display font-black text-base">
-                  {settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}
-                </div>
-                {settings?.print_header_subtitle && <div className="text-[9px] text-zinc-500">{settings.print_header_subtitle}</div>}
-                {(settings?.print_header_address || settings?.address) && <div className="text-[9px] text-zinc-500">{settings?.print_header_address || settings?.address}</div>}
-                {(settings?.print_header_phone || settings?.whatsapp) && <div className="text-[9px] text-zinc-500">Telp/WA: {settings?.print_header_phone || settings?.whatsapp}</div>}
-                <div className="text-[10px] font-bold mt-1 border-t border-b border-dashed border-zinc-300 py-1 uppercase tracking-wider">Nota Penjualan Sparepart</div>
-              </div>
+              {receiptOpen && <PrintStyle targetId="ds-receipt-print" kind="nota" profileKey="pos_sale" />}
+              <PrintoutHeader settings={settings} type="pos_sale" documentTitle="Nota Penjualan Sparepart" />
               <div className="flex justify-between text-[10px] mt-2">
                 <div>{lastSale.sale_number}</div><div>{fmtDate(lastSale.created_at)}</div>
               </div>
-              <div className="text-[10px]">Pelanggan: {lastSale.customer_name}</div>
-              <div className="text-[10px]">Kasir: {lastSale.cashier_name}</div>
+              {receiptPrint.showCustomer && <div className="text-[10px]">Pelanggan: {lastSale.customer_name}</div>}
+              {receiptPrint.showCashier && <div className="text-[10px]">Kasir: {lastSale.cashier_name}</div>}
               <div className="border-t border-dashed border-zinc-300 my-2"></div>
-              {lastSale.items?.map((it, i) => (
+              {receiptPrint.showItems && lastSale.items?.map((it, i) => (
                 <div key={i} className="mb-1">
                   <div className="font-semibold">{it.name}</div>
                   <div className="flex justify-between text-[10px]">
@@ -289,15 +284,15 @@ export default function DirectSale() {
                   </div>
                 </div>
               ))}
-              <div className="border-t border-dashed border-zinc-300 my-2"></div>
-              <div className="flex justify-between text-[10px]"><span>Subtotal</span><span className="font-mono">{fmtIDR(lastSale.subtotal || lastSale.total)}</span></div>
-              {(lastSale.discount || 0) > 0 && <div className="flex justify-between text-[10px]"><span>Diskon</span><span className="font-mono">-{fmtIDR(lastSale.discount)}</span></div>}
-              <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span className="font-mono">{fmtIDR(lastSale.total)}</span></div>
-              <div className="flex justify-between text-[10px]"><span>Bayar ({lastSale.method})</span><span className="font-mono">{fmtIDR(lastSale.paid)}</span></div>
-              {(lastSale.paid - lastSale.total) > 0 && <div className="flex justify-between text-[10px]"><span>Kembali</span><span className="font-mono">{fmtIDR(lastSale.paid - lastSale.total)}</span></div>}
-              <div className="text-center text-[9px] text-zinc-500 mt-3 border-t border-dashed border-zinc-300 pt-2">
-                {settings?.print_footer_text || "Terima kasih telah berbelanja."}
-              </div>
+              {receiptPrint.showCosts && <>
+                <div className="border-t border-dashed border-zinc-300 my-2"></div>
+                <div className="flex justify-between text-[10px]"><span>Subtotal</span><span className="font-mono">{fmtIDR(lastSale.subtotal || lastSale.total)}</span></div>
+                {(lastSale.discount || 0) > 0 && <div className="flex justify-between text-[10px]"><span>Diskon</span><span className="font-mono">-{fmtIDR(lastSale.discount)}</span></div>}
+                <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span className="font-mono">{fmtIDR(lastSale.total)}</span></div>
+                <div className="flex justify-between text-[10px]"><span>Bayar ({lastSale.method})</span><span className="font-mono">{fmtIDR(lastSale.paid)}</span></div>
+                {(lastSale.paid - lastSale.total) > 0 && <div className="flex justify-between text-[10px]"><span>Kembali</span><span className="font-mono">{fmtIDR(lastSale.paid - lastSale.total)}</span></div>}
+              </>}
+              <PrintoutFooter settings={settings} type="pos_sale" fallback="Terima kasih telah berbelanja." />
             </div>
           )}
           <div className="flex gap-2 mt-2">
@@ -305,7 +300,7 @@ export default function DirectSale() {
             <Button onClick={() => window.print()} className="flex-1 gap-2" data-testid="ds-receipt-print"><Printer className="size-4" />Cetak Biasa</Button>
             <Button variant="secondary" className="flex-1 gap-2" data-testid="ds-receipt-usb-print"
               onClick={async () => {
-                try { await sendRaw(buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke USB"); }
+                try { await sendRaw(await buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke USB"); }
                 catch (e) { toast.error(e.message || "Gagal print USB"); }
               }}
               title="Print thermal via USB ESC/POS">
@@ -314,7 +309,7 @@ export default function DirectSale() {
             {isBluetoothAvailable() && (
               <Button variant="secondary" className="flex-1 gap-2" data-testid="ds-receipt-bt-print"
                 onClick={async () => {
-                  try { await printBluetoothRaw(buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke Bluetooth"); }
+                  try { await printBluetoothRaw(await buildPOSReceipt(lastSale || {}, settings)); toast.success("Struk terkirim ke Bluetooth"); }
                   catch (e) { toast.error(e.message || "Gagal print Bluetooth"); }
                 }}
                 title="Print thermal via Bluetooth">
