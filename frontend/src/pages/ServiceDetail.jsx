@@ -1047,7 +1047,7 @@ export default function ServiceDetail() {
                 {(svc.items_used || []).map((it, i) => (
                   <div key={it.id || i} className="text-xs">{it.name} × {it.qty}</div>
                 ))}
-              </div>
+              </div>}
               <div className="border-t border-dashed border-zinc-300 mt-2 pt-1 space-y-0.5 text-xs">
                 <div className="flex justify-between font-bold"><span>TOTAL</span><span className="font-mono">{fmtIDR(svc.final_cost || 0)}</span></div>
                 <div className="flex justify-between"><span>Dibayar</span><span className="font-mono">{fmtIDR(svc.total_paid || 0)}</span></div>
