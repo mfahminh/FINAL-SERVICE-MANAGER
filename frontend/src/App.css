@@ -2,6 +2,21 @@
 /* Print rules are injected dynamically by <PrintStyle /> component for each target element.
    This gives us proper @page size (58mm/80mm/A4), margins, gap-cutter, and font sizing per settings. */
 
+.printout-header-professional {
+  border-bottom: 1px solid #d4d4d8;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.printout-header-classic {
+  font-family: "Courier New", monospace;
+}
+
+.printout-header-minimal {
+  border: 0;
+  padding-bottom: 0;
+}
+
 /* Fallback: hide navigation while printing in case PrintStyle didn't mount */
 @media print {
   aside, header, .no-print { display: none !important; }

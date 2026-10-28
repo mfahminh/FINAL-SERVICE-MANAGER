@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Download, FileSpreadsheet, FileText, Printer, Receipt, Users, Wrench, Package, ShoppingCart, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import PrintStyle from "@/components/PrintStyle";
+import { useBranding } from "@/context/BrandingContext";
+import { getPrintoutConfig } from "@/lib/printoutSettings";
+import { PrintoutFooter, PrintoutHeader } from "@/components/PrintoutHeader";
 
 const GROUP_LABELS = { item: "Per Item", day: "Per Hari", month: "Per Bulan" };
 
@@ -44,6 +47,8 @@ function ExportButtons({ type, params }) {
 }
 
 export default function Reports() {
+  const { settings } = useBranding();
+  const slipPrint = getPrintoutConfig(settings, "technician_slip");
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 7) + "-01";
   const [start, setStart] = useState(monthStart);
@@ -505,19 +510,18 @@ export default function Reports() {
 
             {slipData && (
               <div id="slip-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
-                {slipOpen && <PrintStyle targetId="slip-print" kind="nota" />}
-                <div className="text-center mb-3">
-                  <div className="font-display font-black text-lg">{slipData.shop.name}</div>
-                  {slipData.shop.address && <div className="text-[10px] text-zinc-500">{slipData.shop.address}</div>}
-                  <div className="text-xs font-bold mt-1 uppercase tracking-wider border-t border-b border-dashed border-zinc-300 py-1">SLIP GAJI TEKNISI</div>
-                </div>
-                <div className="grid grid-cols-2 gap-y-1 text-xs mb-3">
+                {slipOpen && <PrintStyle targetId="slip-print" kind="nota" profileKey="technician_slip" />}
+                <PrintoutHeader settings={{ ...settings, shop_name: slipData.shop.name, address: slipData.shop.address }} type="technician_slip" documentTitle="Slip Gaji Teknisi" />
+                {slipPrint.showTechnician && <div className="grid grid-cols-2 gap-y-1 text-xs mb-3">
                   <div><span className="text-zinc-500">Nama:</span> <b>{slipData.technician.name}</b></div>
                   <div><span className="text-zinc-500">% Komisi:</span> <b>{slipData.technician.commission_percent}%</b></div>
+                </div>}
+                {slipPrint.showPeriod && <div className="grid grid-cols-2 gap-y-1 text-xs mb-3">
                   <div><span className="text-zinc-500">Periode:</span> <b>{slipData.period.start} s/d {slipData.period.end}</b></div>
                   <div><span className="text-zinc-500">Jumlah Job:</span> <b>{slipData.job_count}</b></div>
-                </div>
+                </div>}
 
+                {slipPrint.showItems && <>
                 <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1">Rincian Service</div>
                 <table className="w-full text-[10px] border-collapse">
                   <thead>
@@ -553,13 +557,14 @@ export default function Reports() {
                     </tr>
                   </tfoot>
                 </table>
+                </>}
 
-                <div className="mt-4 p-2 rounded bg-emerald-50 border border-emerald-200 flex justify-between font-bold">
+                {slipPrint.showCosts && <div className="mt-4 p-2 rounded bg-emerald-50 border border-emerald-200 flex justify-between font-bold">
                   <span>TOTAL KOMISI (GAJI)</span>
                   <span className="font-mono">{fmtIDR(slipData.total_commission)}</span>
-                </div>
+                </div>}
 
-                <div className="mt-4 pt-2 border-t border-dashed border-zinc-300 grid grid-cols-2 text-[10px] text-zinc-600">
+                {slipPrint.showSignature && <div className="mt-4 pt-2 border-t border-dashed border-zinc-300 grid grid-cols-2 text-[10px] text-zinc-600">
                   <div>
                     <div>Diterbitkan oleh: <b>{slipData.generated_by}</b></div>
                     <div>{fmtDate(slipData.generated_at)}</div>
@@ -569,7 +574,8 @@ export default function Reports() {
                     <div className="mt-8 border-b border-zinc-400 w-32 ml-auto"></div>
                     <div className="mt-1">{slipData.technician.name}</div>
                   </div>
-                </div>
+                </div>}
+                <PrintoutFooter settings={settings} type="technician_slip" />
               </div>
             )}
 

@@ -1,3 +1,5 @@
+import { getPrintoutConfig } from "@/lib/printoutSettings";
+
 /**
  * ESC/POS printer via Web USB API.
  * Support: text (with alignment/bold/size), separator lines, QR code,
@@ -201,134 +203,177 @@ function widthFor(paper) {
   return 42;
 }
 
-export function buildServiceIntakeReceipt(svc, settings, trackUrl) {
+async function logoRaster(settings, config, maxWidth) {
+  if (!config.showLogo || !settings?.logo || typeof Image === "undefined") return new Uint8Array();
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("Logo tidak dapat dibaca untuk printer thermal"));
+    image.src = settings.logo;
+  });
+  const scale = Math.min(1, maxWidth / image.naturalWidth, 160 / image.naturalHeight);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Canvas tidak tersedia untuk mencetak logo");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const rowBytes = Math.ceil(width / 8);
+  const raster = new Uint8Array(8 + rowBytes * height);
+  raster.set([GS, 0x76, 0x30, 0x00, rowBytes & 0xff, (rowBytes >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff]);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixel = (y * width + x) * 4;
+      const gray = 0.299 * pixels[pixel] + 0.587 * pixels[pixel + 1] + 0.114 * pixels[pixel + 2];
+      if (gray < 160) raster[8 + y * rowBytes + Math.floor(x / 8)] |= 0x80 >> (x % 8);
+    }
+  }
+  return raster;
+}
+
+async function printHeader(settings, profile, documentTitle, width, paperWidth) {
+  const config = getPrintoutConfig(settings, profile);
+  const title = settings?.print_header_title || settings?.shop_name || "SERVICE HP";
+  const chunks = [align(1)];
+  const logo = await logoRaster(settings, config, Math.min(576, widthFor(paperWidth) * 12));
+  if (logo.length) chunks.push(logo, txt("\n"));
+  if (config.showShopName) chunks.push(bold(true), textSize(1, 1), txt(title + "\n"), textSize(0, 0), bold(false));
+  if (settings?.print_header_subtitle) chunks.push(txt(settings.print_header_subtitle + "\n"));
+  const address = settings?.print_header_address || settings?.address;
+  const phone = settings?.print_header_phone || settings?.whatsapp;
+  if (config.showAddress && address) chunks.push(txt(address + "\n"));
+  if (config.showPhone && phone) chunks.push(txt("Telp: " + phone + "\n"));
+  chunks.push(bold(true), txt(documentTitle + "\n"), bold(false), separator("=", width), align(0));
+  return chunks;
+}
+
+function printFooter(settings, config, fallback, typeFooter = "") {
+  if (!config.showFooter) return new Uint8Array();
+  return concat(align(1), txt((config.footer || typeFooter || settings?.print_footer_text || fallback) + "\n"));
+}
+
+export async function buildServiceIntakeReceipt(svc, settings, trackUrl) {
   const w = widthFor(settings?.printer_qr_width);
-  const shop = settings?.print_header_title || settings?.shop_name || "SERVICE HP";
-  return concat(
+  const config = getPrintoutConfig(settings, "service_intake");
+  const chunks = [
     initPrinter(),
-    align(1), textSize(1, 1), txt(shop + "\n"), textSize(0, 0),
-    settings?.print_header_address ? txt(settings.print_header_address + "\n") : new Uint8Array(),
-    settings?.print_header_phone ? txt("Telp: " + settings.print_header_phone + "\n") : new Uint8Array(),
-    bold(true), txt("TANDA TERIMA SERVICE\n"), bold(false),
-    separator("=", w),
-    align(0),
+    ...(await printHeader(settings, "service_intake", settings?.qr_header_title || "TANDA TERIMA SERVICE", w, settings?.printer_qr_width)),
     kv("No.", svc.service_number, w),
     kv("Tgl", fmtDate(svc.created_at), w),
-    kv("Cust", svc.customer_name || "-", w),
-    kv("No HP", svc.customer_phone || "-", w),
-    kv("Device", (svc.brand || "") + " " + (svc.model || ""), w),
-    svc.imei1 ? kv("IMEI", svc.imei1, w) : new Uint8Array(),
-    txt("Keluhan:\n" + (svc.complaint || "-") + "\n"),
-    kv("Estimasi", fmtRp(svc.estimated_cost), w),
+    config.showCustomer ? kv("Cust", svc.customer_name || "-", w) : new Uint8Array(),
+    config.showCustomer ? kv("No HP", svc.customer_phone || "-", w) : new Uint8Array(),
+    config.showDevice ? kv("Device", (svc.brand || "") + " " + (svc.model || ""), w) : new Uint8Array(),
+    config.showImei && svc.imei1 ? kv("IMEI", svc.imei1, w) : new Uint8Array(),
+    config.showComplaint ? txt("Keluhan:\n" + (svc.complaint || "-") + "\n") : new Uint8Array(),
+    config.showEstimate ? kv("Estimasi", fmtRp(svc.estimated_cost), w) : new Uint8Array(),
     separator("-", w),
-    align(1),
-    qrCode(trackUrl, 6),
-    txt("Scan untuk cek status\n"),
-    txt(trackUrl + "\n"),
-    separator("=", w),
-    align(1), txt("Terima Kasih\n"),
-    feed(3), cutPaper()
-  );
+  ];
+  if (config.showQr) chunks.push(align(1), qrCode(trackUrl, 6), txt("Scan untuk cek status\n"), txt(trackUrl + "\n"));
+  chunks.push(separator("=", w), printFooter(settings, config, "Scan untuk cek status", settings?.qr_footer_text), feed(3), cutPaper());
+  return concat(...chunks);
 }
 
-export function buildServiceLabel(svc, settings, trackUrl) {
+export async function buildServiceLabel(svc, settings, trackUrl) {
   const w = widthFor(settings?.printer_label_width);
-  const shop = settings?.label_header_title || settings?.print_header_title || settings?.shop_name || "SERVICE HP";
-  return concat(
+  const config = getPrintoutConfig(settings, "service_label");
+  const chunks = [
     initPrinter(),
-    align(1), bold(true), txt(shop + "\n"), bold(false),
-    txt("SERVICE TAG\n"),
-    separator("=", w),
-    qrCode(trackUrl, 5),
-    bold(true), textSize(1, 1), txt(svc.service_number + "\n"), textSize(0, 0), bold(false),
-    barcode128(svc.service_number),
+    ...(await printHeader(settings, "service_label", settings?.label_header_title || "SERVICE TAG", w, settings?.printer_label_width)),
+  ];
+  if (config.showQr) chunks.push(align(1), qrCode(trackUrl, 5));
+  chunks.push(bold(true), textSize(1, 1), txt(svc.service_number + "\n"), textSize(0, 0), bold(false));
+  if (config.showBarcode) chunks.push(barcode128(svc.service_number));
+  chunks.push(
     align(0),
-    kv("Cust", svc.customer_name || "-", w),
-    kv("Dev", (svc.brand || "") + " " + (svc.model || ""), w),
-    svc.imei1 ? kv("IMEI", "****" + svc.imei1.slice(-4), w) : new Uint8Array(),
-    kv("Masuk", fmtDate(svc.created_at), w),
-    kv("Status", svc.status || "-", w),
+    config.showCustomer ? kv("Cust", svc.customer_name || "-", w) : new Uint8Array(),
+    config.showDevice ? kv("Dev", (svc.brand || "") + " " + (svc.model || ""), w) : new Uint8Array(),
+    config.showImei && svc.imei1 ? kv("IMEI", "****" + svc.imei1.slice(-4), w) : new Uint8Array(),
+    config.showDate ? kv("Masuk", fmtDate(svc.created_at), w) : new Uint8Array(),
+    config.showTechnician && svc.assigned_technician_name ? kv("Teknisi", svc.assigned_technician_name, w) : new Uint8Array(),
+    config.showStatus ? kv("Status", svc.status || "-", w) : new Uint8Array(),
     separator("-", w),
+    printFooter(settings, config, "", settings?.label_footer_text),
     feed(2), cutPaper()
   );
+  return concat(...chunks);
 }
 
-export function buildFinalServiceNota(svc, settings) {
+export async function buildFinalServiceNota(svc, settings) {
   const w = widthFor(settings?.printer_nota_width);
-  const shop = settings?.print_header_title || settings?.shop_name || "SERVICE HP";
+  const config = getPrintoutConfig(settings, "service_final");
   const items = svc.items_used || [];
   const chunks = [
     initPrinter(),
-    align(1), bold(true), textSize(1, 1), txt(shop + "\n"), textSize(0, 0), bold(false),
-    settings?.print_header_address ? txt(settings.print_header_address + "\n") : new Uint8Array(),
-    settings?.print_header_phone ? txt("Telp: " + settings.print_header_phone + "\n") : new Uint8Array(),
-    bold(true), txt("NOTA SERVICE\n"), bold(false),
-    separator("=", w),
-    align(0),
+    ...(await printHeader(settings, "service_final", "NOTA SERVICE", w, settings?.printer_nota_width)),
     kv("No.", svc.service_number, w),
     kv("Tgl", fmtDate(svc.pickup?.at || svc.updated_at), w),
-    kv("Cust", svc.customer_name || "-", w),
-    kv("Device", (svc.brand || "") + " " + (svc.model || ""), w),
-    svc.imei1 ? kv("IMEI", svc.imei1, w) : new Uint8Array(),
-    svc.assigned_technician_name ? kv("Teknisi", svc.assigned_technician_name, w) : new Uint8Array(),
-    txt("Tindakan:\n" + (svc.diagnosis?.action || svc.complaint || "-") + "\n"),
+    config.showCustomer ? kv("Cust", svc.customer_name || "-", w) : new Uint8Array(),
+    config.showDevice ? kv("Device", (svc.brand || "") + " " + (svc.model || ""), w) : new Uint8Array(),
+    config.showImei && svc.imei1 ? kv("IMEI", svc.imei1, w) : new Uint8Array(),
+    config.showTechnician && svc.assigned_technician_name ? kv("Teknisi", svc.assigned_technician_name, w) : new Uint8Array(),
+    config.showComplaint ? txt("Tindakan:\n" + (svc.diagnosis?.action || svc.complaint || "-") + "\n") : new Uint8Array(),
     separator("-", w),
-    kv("Biaya Jasa", fmtRp(svc.service_fee ?? svc.estimated_cost ?? 0), w),
   ];
-  for (const it of items) {
-    chunks.push(kv(`${it.name} x${it.qty}`, fmtRp((it.price || 0) * (it.qty || 0)), w));
+  if (config.showCosts) {
+    chunks.push(txt("Ringkasan Biaya\nBiaya Jasa\n"));
+    if (config.showItems) for (const it of items) chunks.push(txt(`${it.name} x${it.qty}\n`));
+    chunks.push(
+      separator("-", w),
+      bold(true), kv("TOTAL", fmtRp(svc.final_cost || 0), w), bold(false),
+      kv("Dibayar", fmtRp(svc.total_paid || 0), w),
+      kv("Sisa", fmtRp(Math.max(0, (svc.final_cost || 0) - (svc.total_paid || 0))), w),
+      separator("-", w),
+    );
   }
-  chunks.push(
-    separator("-", w),
-    bold(true), kv("TOTAL", fmtRp(svc.final_cost || 0), w), bold(false),
-    kv("Dibayar", fmtRp(svc.total_paid || 0), w),
-    kv("Sisa", fmtRp(Math.max(0, (svc.final_cost || 0) - (svc.total_paid || 0))), w),
-    separator("-", w),
-  );
-  if (svc.warranty_days) {
+  if (config.showWarranty && svc.warranty_days) {
     chunks.push(
       align(0),
       bold(true), txt(`Garansi: ${svc.warranty_days} hari\n`), bold(false),
       svc.warranty_until ? txt("Berlaku hingga " + fmtDate(svc.warranty_until) + "\n") : new Uint8Array(),
     );
   }
+  if (config.showQc && svc.qc_result) {
+    chunks.push(txt("Hasil QC:\n"));
+    for (const item of (svc.qc_result.items || [])) chunks.push(txt(`${item.name}: ${item.ok ? "OK" : "Perlu dicek"}\n`));
+    if (svc.qc_result.overall_note) chunks.push(txt(`Catatan QC: ${svc.qc_result.overall_note}\n`));
+  }
   chunks.push(
-    align(1),
-    txt((settings?.print_footer_text || "Terima kasih") + "\n"),
+    printFooter(settings, config, "Terima kasih"),
     feed(3), cutPaper()
   );
   return concat(...chunks);
 }
 
-export function buildPOSReceipt(sale, settings) {
+export async function buildPOSReceipt(sale, settings) {
   const w = widthFor(settings?.printer_nota_width);
-  const shop = settings?.print_header_title || settings?.shop_name || "SERVICE HP";
+  const config = getPrintoutConfig(settings, "pos_sale");
   const chunks = [
     initPrinter(),
-    align(1), bold(true), textSize(1, 1), txt(shop + "\n"), textSize(0, 0), bold(false),
-    settings?.print_header_address ? txt(settings.print_header_address + "\n") : new Uint8Array(),
-    bold(true), txt("STRUK PENJUALAN\n"), bold(false),
-    separator("=", w),
-    align(0),
+    ...(await printHeader(settings, "pos_sale", "STRUK PENJUALAN", w, settings?.printer_nota_width)),
     kv("No.", sale.sale_number || sale.id?.slice(0, 8) || "-", w),
     kv("Tgl", fmtDate(sale.created_at || new Date().toISOString()), w),
-    sale.customer_name ? kv("Cust", sale.customer_name, w) : new Uint8Array(),
-    separator("-", w),
+    config.showCustomer && sale.customer_name ? kv("Cust", sale.customer_name, w) : new Uint8Array(),
+    config.showCashier && sale.cashier_name ? kv("Kasir", sale.cashier_name, w) : new Uint8Array(),
+    config.showItems ? separator("-", w) : new Uint8Array(),
   ];
-  for (const it of (sale.items || [])) {
-    chunks.push(
-      txt(it.name + "\n"),
-      kv(` ${it.qty} x ${fmtRp(it.price)}`, fmtRp((it.price || 0) * (it.qty || 0)), w),
-    );
+  if (config.showItems) {
+    for (const it of (sale.items || [])) {
+      chunks.push(txt(it.name + "\n"), kv(` ${it.qty} x ${fmtRp(it.price)}`, fmtRp((it.price || 0) * (it.qty || 0)), w));
+    }
   }
-  chunks.push(
+  if (config.showCosts) chunks.push(
     separator("-", w),
+    kv("Subtotal", fmtRp(sale.subtotal ?? sale.total ?? 0), w),
+    (sale.discount || 0) > 0 ? kv("Diskon", "-" + fmtRp(sale.discount), w) : new Uint8Array(),
     bold(true), kv("TOTAL", fmtRp(sale.total || 0), w), bold(false),
-    kv("Bayar", fmtRp(sale.paid || sale.total || 0), w),
+    kv(`Bayar${sale.method ? ` (${sale.method})` : ""}`, fmtRp(sale.paid || sale.total || 0), w),
     kv("Kembali", fmtRp(Math.max(0, (sale.paid || 0) - (sale.total || 0))), w),
-    separator("=", w),
-    align(1), txt((settings?.print_footer_text || "Terima kasih") + "\n"),
-    feed(3), cutPaper()
   );
+  chunks.push(separator("=", w), printFooter(settings, config, "Terima kasih"), feed(3), cutPaper());
   return concat(...chunks);
 }
