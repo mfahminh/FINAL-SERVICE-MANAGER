@@ -87,6 +87,23 @@ def create_access_token(user_id: str, email: str, role: str) -> str:
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def calculate_service_profit(service: dict) -> float:
+    service_fee = service.get("service_fee", service.get("estimated_cost", 0) or 0) or 0
+    final_cost = service.get("final_cost")
+    if final_cost is None:
+        final_cost = service_fee + sum(
+            (item.get("price", 0) or 0) * (item.get("qty", 0) or 0)
+            for item in service.get("items_used", [])
+        )
+    return (final_cost or 0) - (service.get("sparepart_cost", 0) or 0)
+
+def completed_date_filter(start: str, end: str) -> dict:
+    date_range = {"$gte": start, "$lte": end + "T23:59:59.999999"}
+    return {"$or": [
+        {"completed_at": date_range},
+        {"completed_at": {"$in": [None, ""]}, "created_at": date_range},
+    ]}
+
 def gen_id() -> str:
     return str(uuid.uuid4())
 
@@ -579,9 +596,14 @@ async def update_status(sid: str, data: StatusUpdate, user: dict = Depends(requi
         raise HTTPException(400, "Status tidak valid")
     s = await db.services.find_one({"id": sid})
     if not s: raise HTTPException(404)
+    status_at = now_iso()
     history = s.get("status_history", [])
-    history.append({"status": data.status, "note": data.note or "", "by": user["name"], "at": now_iso()})
-    update = {"status": data.status, "status_history": history, "updated_at": now_iso()}
+    history.append({"status": data.status, "note": data.note or "", "by": user["name"], "at": status_at})
+    update = {"status": data.status, "status_history": history, "updated_at": status_at}
+    if data.status in ("Selesai", "Sudah Diambil"):
+        update["profit"] = calculate_service_profit(s)
+        if s.get("status") not in ("Selesai", "Sudah Diambil") or not s.get("completed_at"):
+            update["completed_at"] = status_at
 
     # If cancelled, handle sparepart choice
     if data.status == "Dibatalkan":
@@ -800,9 +822,12 @@ async def submit_qc(sid: str, data: QCCheckIn, user: dict = Depends(require_role
 
     history = s.get("status_history", [])
     if all_ok:
-        history.append({"status": "Selesai", "note": "QC PASS - siap diambil", "by": user["name"], "at": now_iso()})
+        completed_at = now_iso()
+        history.append({"status": "Selesai", "note": "QC PASS - siap diambil", "by": user["name"], "at": completed_at})
         update = {
             "status": "Selesai",
+            "completed_at": completed_at,
+            "profit": calculate_service_profit(s),
             "qc_result": qc_result,
             "qc_history": qc_history,
             "qc_passed": True,
@@ -1193,8 +1218,11 @@ async def financial_report(start: Optional[str] = None, end: Optional[str] = Non
     end_dt = end + "T23:59:59"
     pays = await db.payments.find({"created_at": {"$gte": start, "$lte": end_dt}}, {"_id": 0}).to_list(10000)
     svcs = await db.services.find({"created_at": {"$gte": start, "$lte": end_dt}}, {"_id": 0}).to_list(10000)
+    completed_svcs = await db.services.find({
+        "status": {"$in": ["Selesai", "Sudah Diambil"]}, **completed_date_filter(start, end)
+    }, {"_id": 0}).to_list(10000)
     omzet = sum(p["amount"] for p in pays)
-    laba = sum(s.get("profit", 0) or 0 for s in svcs if s.get("status") in ["Selesai", "Sudah Diambil"])
+    laba = sum(s.get("profit", 0) or 0 for s in completed_svcs)
     modal = sum(s.get("sparepart_cost", 0) or 0 for s in svcs)
     dp_total = sum(p["amount"] for p in pays if p.get("type") == "dp")
     piutang = sum(max(0, (s.get("final_cost", 0) - s.get("total_paid", 0))) for s in svcs if s.get("status") != "Dibatalkan")
@@ -1230,7 +1258,6 @@ async def report_technicians(user: dict = Depends(require_roles("owner", "admin"
 async def report_technicians_profit(start: Optional[str] = None, end: Optional[str] = None, technician_id: Optional[str] = None, user: dict = Depends(require_roles("owner", "admin"))):
     if not start: start = datetime.now(timezone.utc).strftime("%Y-%m-01")
     if not end: end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    end_dt = end + "T23:59:59"
     techs = await db.technicians.find({}, {"_id": 0}).to_list(500)
     if technician_id:
         techs = [t for t in techs if t["id"] == technician_id]
@@ -1239,7 +1266,7 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
         svcs = await db.services.find({
             "assigned_technician_id": t["id"],
             "status": {"$in": ["Selesai", "Sudah Diambil"]},
-            "created_at": {"$gte": start, "$lte": end_dt},
+            **completed_date_filter(start, end),
         }, {"_id": 0}).to_list(2000)
         pct = t.get("commission_percent", 0) / 100
         detail = []
@@ -1257,6 +1284,7 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
                 "brand": s.get("brand"),
                 "model": s.get("model"),
                 "created_at": s.get("created_at"),
+                "completed_at": s.get("completed_at") or s.get("created_at"),
                 "final_cost": s.get("final_cost", 0) or 0,
                 "service_fee": fee,
                 "commission": comm,
@@ -1278,12 +1306,11 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
 async def technician_salary_slip(tid: str, start: str, end: str, user: dict = Depends(require_roles("owner", "admin"))):
     tech = await db.technicians.find_one({"id": tid}, {"_id": 0})
     if not tech: raise HTTPException(404, "Teknisi tidak ditemukan")
-    end_dt = end + "T23:59:59"
     svcs = await db.services.find({
         "assigned_technician_id": tid,
         "status": {"$in": ["Selesai", "Sudah Diambil"]},
-        "created_at": {"$gte": start, "$lte": end_dt},
-    }, {"_id": 0}).sort("created_at", 1).to_list(2000)
+        **completed_date_filter(start, end),
+    }, {"_id": 0}).sort("completed_at", 1).to_list(2000)
     pct = tech.get("commission_percent", 0) / 100
     detail = []
     total_fee = 0
@@ -1295,7 +1322,7 @@ async def technician_salary_slip(tid: str, start: str, end: str, user: dict = De
         total_commission += comm
         detail.append({
             "service_number": s.get("service_number"),
-            "date": s.get("created_at"),
+            "date": s.get("completed_at") or s.get("created_at"),
             "customer_name": s.get("customer_name"),
             "brand_model": f"{s.get('brand','')} {s.get('model','')}".strip(),
             "service_fee": fee,
@@ -1577,11 +1604,16 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     payments_month = await db.payments.find({"created_at": {"$regex": f"^{month}"}}, {"_id": 0}).to_list(5000)
     revenue_month = sum(p["amount"] for p in payments_month)
 
-    # Profit stats
-    today_svcs = await db.services.find({"created_at": {"$regex": f"^{today}"}}, {"_id": 0}).to_list(2000)
-    month_svcs = await db.services.find({"created_at": {"$regex": f"^{month}"}}, {"_id": 0}).to_list(5000)
-    profit_today = sum(s.get("profit", 0) or 0 for s in today_svcs if s.get("status") in ["Selesai", "Sudah Diambil"])
-    profit_month = sum(s.get("profit", 0) or 0 for s in month_svcs if s.get("status") in ["Selesai", "Sudah Diambil"])
+    # Profit stats follow the date the service was completed, not when it was created.
+    completed_statuses = ["Selesai", "Sudah Diambil"]
+    today_svcs = await db.services.find({
+        "status": {"$in": completed_statuses}, **completed_date_filter(today, today)
+    }, {"_id": 0}).to_list(2000)
+    month_svcs = await db.services.find({
+        "status": {"$in": completed_statuses}, **completed_date_filter(month + "-01", today)
+    }, {"_id": 0}).to_list(5000)
+    profit_today = sum(s.get("profit", 0) or 0 for s in today_svcs)
+    profit_month = sum(s.get("profit", 0) or 0 for s in month_svcs)
 
     # Top technicians (by profit)
     techs = await db.technicians.find({}, {"_id": 0}).to_list(100)
@@ -1995,7 +2027,7 @@ async def export_report(
             svcs = await db.services.find({
                 "assigned_technician_id": t["id"],
                 "status": {"$in": ["Selesai", "Sudah Diambil"]},
-                "created_at": {"$gte": start, "$lte": end_dt},
+                **completed_date_filter(start, end),
             }, {"_id": 0}).to_list(2000)
             pct = t.get("commission_percent", 0) / 100
             total_fee = sum(s.get("service_fee", s.get("estimated_cost", 0) or 0) or 0 for s in svcs)
@@ -2014,8 +2046,8 @@ async def export_report(
         svcs = await db.services.find({
             "assigned_technician_id": technician_id,
             "status": {"$in": ["Selesai", "Sudah Diambil"]},
-            "created_at": {"$gte": start, "$lte": end_dt},
-        }, {"_id": 0}).sort("created_at", 1).to_list(2000)
+            **completed_date_filter(start, end),
+        }, {"_id": 0}).sort("completed_at", 1).to_list(2000)
         title = f"Slip Gaji Teknisi — {tech['name']}"
         meta["Teknisi"] = tech["name"]
         meta["Persen Komisi"] = f"{tech.get('commission_percent',0)}%"
@@ -2028,7 +2060,7 @@ async def export_report(
             total_fee += fee
             total_comm += comm
             rows.append([
-                (s.get("created_at") or "")[:10],
+                (s.get("completed_at") or s.get("created_at") or "")[:10],
                 s.get("service_number", ""),
                 s.get("customer_name", ""),
                 f"{s.get('brand','')} {s.get('model','')}".strip(),
@@ -2043,8 +2075,11 @@ async def export_report(
     elif type == "financial":
         pays = await db.payments.find({"created_at": {"$gte": start, "$lte": end_dt}}, {"_id": 0}).to_list(10000)
         svcs = await db.services.find({"created_at": {"$gte": start, "$lte": end_dt}}, {"_id": 0}).to_list(10000)
+        completed_svcs = await db.services.find({
+            "status": {"$in": ["Selesai", "Sudah Diambil"]}, **completed_date_filter(start, end)
+        }, {"_id": 0}).to_list(10000)
         omzet = sum(p["amount"] for p in pays)
-        laba = sum(s.get("profit", 0) or 0 for s in svcs if s.get("status") in ["Selesai", "Sudah Diambil"])
+        laba = sum(s.get("profit", 0) or 0 for s in completed_svcs)
         modal = sum(s.get("sparepart_cost", 0) or 0 for s in svcs)
         title = "Laporan Keuangan"
         headers = ["Metrik", "Nilai"]
