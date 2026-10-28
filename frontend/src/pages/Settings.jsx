@@ -14,6 +14,7 @@ import { Upload, Printer, AlertTriangle, Trash2, MessageCircle, Send, Ruler, Usb
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { pickPrinter, getSavedPrinterInfo, clearSavedPrinter, sendRaw, buildPOSReceipt, buildServiceIntakeReceipt } from "@/lib/escpos";
+import PrintoutSettings from "@/components/PrintoutSettings";
 
 export default function Settings() {
   const [s, setS] = useState(null);
@@ -39,7 +40,7 @@ export default function Settings() {
   };
   const testUsbPrint = async () => {
     try {
-      await sendRaw(buildPOSReceipt({
+      await sendRaw(await buildPOSReceipt({
         sale_number: "TEST-001", created_at: new Date().toISOString(),
         items: [{ name: "Test Printer", qty: 1, price: 1000 }],
         total: 1000, paid: 1000,
@@ -71,8 +72,14 @@ export default function Settings() {
   useEffect(() => { api.get("/settings").then((r) => setS(r.data)); }, []);
 
   const save = async () => {
-    try { await api.patch("/settings", s); toast.success("Pengaturan tersimpan"); reload(); }
-    catch (e) { toast.error("Gagal"); }
+    try {
+      const r = await api.patch("/settings", s);
+      setS(r.data);
+      toast.success("Pengaturan tersimpan");
+      reload();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menyimpan pengaturan");
+    }
   };
 
   const onUpload = async (e) => {
@@ -155,6 +162,8 @@ export default function Settings() {
         <div><Label>Alamat</Label><Textarea rows={2} value={s.address || ""} onChange={(e) => setS({ ...s, address: e.target.value })} /></div>
         <div><Label>Template WhatsApp</Label><Textarea rows={3} value={s.wa_template || ""} onChange={(e) => setS({ ...s, wa_template: e.target.value })} placeholder="Halo {nama}, service {nomor} ..." /></div>
       </Card>
+
+      <PrintoutSettings settings={s} onChange={setS} onSave={save} />
 
       {/* Thermal Printer Configuration */}
       <Card className="p-5 border border-border space-y-4" data-testid="thermal-printer-card">
@@ -546,4 +555,3 @@ export default function Settings() {
     </div>
   );
 }
-

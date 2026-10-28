@@ -17,6 +17,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
 import PrintStyle from "@/components/PrintStyle";
+import { PrintoutFooter, PrintoutHeader } from "@/components/PrintoutHeader";
+import { getPrintoutConfig } from "@/lib/printoutSettings";
 import { sendRaw, buildFinalServiceNota, buildServiceIntakeReceipt } from "@/lib/escpos";
 import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 import { QC_CHECKLIST, QC_ITEMS_FLAT } from "@/constants/qcChecklist";
@@ -54,7 +56,7 @@ export default function ServiceDetail() {
 
   const usbPrint = async (builderFn) => {
     try {
-      const bytesData = builderFn();
+      const bytesData = await builderFn();
       await sendRaw(bytesData);
       toast.success("Terkirim ke printer USB");
     } catch (e) {
@@ -64,7 +66,7 @@ export default function ServiceDetail() {
 
   const btPrint = async (builderFn) => {
     try {
-      const bytesData = builderFn();
+      const bytesData = await builderFn();
       await printBluetoothRaw(bytesData);
       toast.success("Terkirim ke printer Bluetooth");
     } catch (e) {
@@ -77,6 +79,9 @@ export default function ServiceDetail() {
   const isCancelled = svc?.status === "Dibatalkan";
   const canUpdateStatus = user?.role === "owner" || user?.role === "admin";
   const canDoQC = user?.role === "owner" || user?.role === "admin";
+  const intakePrint = getPrintoutConfig(settings, "service_intake");
+  const cancelPrint = getPrintoutConfig(settings, "service_cancel");
+  const finalPrint = getPrintoutConfig(settings, "service_final");
 
   const load = async () => {
     const r = await api.get(`/services/${id}`);
@@ -344,15 +349,17 @@ export default function ServiceDetail() {
             <DialogContent className="max-w-md">
               <DialogHeader><DialogTitle>Tanda Terima Service</DialogTitle></DialogHeader>
               <div id="receipt-print" className="border border-border rounded-md p-5 text-center bg-white text-zinc-900">
-                {qrOpen && <PrintStyle targetId="receipt-print" kind="qr" />}
-                <div className="font-display font-black text-lg">SERVICE HP MANAGER</div>
-                <div className="text-xs">Tanda Terima Service</div>
-                <div className="my-3 flex justify-center"><QRCodeSVG value={trackUrl} size={140} /></div>
+                {qrOpen && <PrintStyle targetId="receipt-print" kind="qr" profileKey="service_intake" />}
+                <PrintoutHeader settings={settings} type="service_intake" documentTitle={settings?.qr_header_title || "Tanda Terima Service"} />
+                {intakePrint.showQr && <div className="my-3 flex justify-center"><QRCodeSVG value={trackUrl} size={140} /></div>}
                 <div className="font-mono font-bold text-lg">{svc.service_number}</div>
-                <div className="text-xs mt-2">{svc.customer_name} • {maskPhone(svc.customer_phone, user?.role)}</div>
-                <div className="text-xs">{svc.brand} {svc.model} • {svc.color}</div>
-                <div className="text-xs mt-2">Estimasi: {fmtIDR(svc.estimated_cost)}</div>
-                <div className="text-[10px] text-zinc-500 mt-3">Scan untuk tracking status</div>
+                {intakePrint.showCustomer && <div className="text-xs mt-2">{svc.customer_name} • {maskPhone(svc.customer_phone, user?.role)}</div>}
+                {intakePrint.showDevice && <div className="text-xs">{svc.brand} {svc.model} • {svc.color}</div>}
+                {intakePrint.showImei && svc.imei1 && <div className="text-xs">IMEI: {svc.imei1}</div>}
+                {intakePrint.showComplaint && <div className="text-xs mt-2">Keluhan: {svc.complaint}</div>}
+                {intakePrint.showEstimate && <div className="text-xs mt-2">Estimasi: {fmtIDR(svc.estimated_cost)}</div>}
+                {intakePrint.showQr && <div className="text-[10px] text-zinc-500 mt-3">Scan untuk tracking status</div>}
+                <PrintoutFooter settings={settings} type="service_intake" fallback="Terima kasih telah menggunakan layanan kami." />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => window.print()} className="gap-2" data-testid="qr-print-btn"><Printer className="size-4" />Cetak Biasa</Button>
@@ -869,21 +876,15 @@ export default function ServiceDetail() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nota Pembatalan Service</DialogTitle></DialogHeader>
           <div id="nota-cancel-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
-            {notaOpen && <PrintStyle targetId="nota-cancel-print" kind="nota" />}
-            <div className="text-center">
-              <div className="font-display font-black text-lg">{settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}</div>
-              {settings?.print_header_subtitle && <div className="text-[10px] text-zinc-500">{settings.print_header_subtitle}</div>}
-              {(settings?.print_header_address || settings?.address) && <div className="text-[10px] text-zinc-500">{settings?.print_header_address || settings?.address}</div>}
-              {(settings?.print_header_phone || settings?.whatsapp) && <div className="text-[10px] text-zinc-500">Telp: {settings?.print_header_phone || settings?.whatsapp}</div>}
-              <div className="text-xs font-semibold mt-1 uppercase tracking-wider">Nota Pembatalan</div>
-            </div>
+            {notaOpen && <PrintStyle targetId="nota-cancel-print" kind="nota" profileKey="service_cancel" />}
+            <PrintoutHeader settings={settings} type="service_cancel" documentTitle="Nota Pembatalan" />
             <div className="border-t border-b border-dashed border-zinc-300 my-3 py-2 space-y-1 text-xs">
               <div className="flex justify-between"><span>No. Service</span><span className="font-mono font-bold">{svc.service_number}</span></div>
               <div className="flex justify-between"><span>Tanggal</span><span>{fmtDate(new Date().toISOString())}</span></div>
-              <div className="flex justify-between"><span>Pelanggan</span><span>{svc.customer_name}</span></div>
-              <div className="flex justify-between"><span>Device</span><span>{svc.brand} {svc.model}</span></div>
+              {cancelPrint.showCustomer && <div className="flex justify-between"><span>Pelanggan</span><span>{svc.customer_name}</span></div>}
+              {cancelPrint.showDevice && <div className="flex justify-between"><span>Device</span><span>{svc.brand} {svc.model}</span></div>}
             </div>
-            <div className="space-y-1">
+            {cancelPrint.showItems && <div className="space-y-1">
               <div className="text-[10px] uppercase tracking-wider text-zinc-500">Detail Biaya</div>
               {(svc.items_used || []).map((it, i) => (
                 <div key={it.id || i} className="flex justify-between text-xs">
@@ -897,8 +898,8 @@ export default function ServiceDetail() {
                   <span className="font-mono">{fmtIDR(svc.service_fee || 0)}</span>
                 </div>
               )}
-            </div>
-            <div className="border-t border-dashed border-zinc-300 mt-3 pt-2 text-xs space-y-1">
+            </div>}
+            {cancelPrint.showCosts && <div className="border-t border-dashed border-zinc-300 mt-3 pt-2 text-xs space-y-1">
               <div className="flex justify-between font-bold">
                 <span>TOTAL TAGIHAN</span>
                 <span className="font-mono">{fmtIDR(svc.final_cost || 0)}</span>
@@ -911,15 +912,13 @@ export default function ServiceDetail() {
                 <span>SISA HARUS DIBAYAR</span>
                 <span className="font-mono">{fmtIDR(Math.max(0, (svc.final_cost || 0) - (svc.total_paid || 0)))}</span>
               </div>
-            </div>
-            {cancelState.reason && (
+            </div>}
+            {cancelPrint.showReason && cancelState.reason && (
               <div className="mt-3 pt-2 border-t border-dashed border-zinc-300 text-[10px]">
                 <div className="text-zinc-500">Alasan: {cancelState.reason}</div>
               </div>
             )}
-            <div className="text-center text-[10px] text-zinc-500 mt-4">
-              Terima kasih atas pengertiannya.
-            </div>
+            <PrintoutFooter settings={settings} type="service_cancel" fallback="Terima kasih atas pengertiannya." />
           </div>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" onClick={() => { setNotaOpen(false); load(); }} className="flex-1" data-testid="nota-close-btn">Tutup</Button>
@@ -1023,33 +1022,27 @@ export default function ServiceDetail() {
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nota Service</DialogTitle></DialogHeader>
           <div id="nota-final-print" className="border border-border rounded-md p-5 bg-white text-zinc-900 text-sm">
-            {notaFinalOpen && <PrintStyle targetId="nota-final-print" kind="nota" />}
-            <div className="text-center">
-              <div className="font-display font-black text-lg">{settings?.print_header_title || settings?.shop_name || settings?.app_name || "SERVICE HP MANAGER"}</div>
-              {settings?.print_header_subtitle && <div className="text-[10px] text-zinc-500">{settings.print_header_subtitle}</div>}
-              {(settings?.print_header_address || settings?.address) && <div className="text-[10px] text-zinc-500">{settings?.print_header_address || settings?.address}</div>}
-              {(settings?.print_header_phone || settings?.whatsapp) && <div className="text-[10px] text-zinc-500">Telp: {settings?.print_header_phone || settings?.whatsapp}</div>}
-              <div className="text-xs font-semibold mt-1 uppercase tracking-wider">NOTA SERVICE</div>
-            </div>
+            {notaFinalOpen && <PrintStyle targetId="nota-final-print" kind="nota" profileKey="service_final" />}
+            <PrintoutHeader settings={settings} type="service_final" documentTitle="Nota Service" />
 
             {/* Data pelanggan & device */}
             <div className="border-t border-b border-dashed border-zinc-300 my-3 py-2 space-y-1 text-xs">
               <div className="flex justify-between"><span>No. Service</span><span className="font-mono font-bold">{svc.service_number}</span></div>
               <div className="flex justify-between"><span>Tanggal Selesai</span><span>{fmtDate(svc.pickup?.at || svc.updated_at)}</span></div>
-              <div className="flex justify-between"><span>Pelanggan</span><span>{svc.customer_name}</span></div>
-              <div className="flex justify-between"><span>No HP</span><span className="font-mono">{svc.customer_phone}</span></div>
-              <div className="flex justify-between"><span>Device</span><span>{svc.brand} {svc.model}</span></div>
-              {svc.imei1 && <div className="flex justify-between"><span>IMEI</span><span className="font-mono text-[10px]">{svc.imei1}</span></div>}
+              {finalPrint.showCustomer && <div className="flex justify-between"><span>Pelanggan</span><span>{svc.customer_name}</span></div>}
+              {finalPrint.showCustomer && <div className="flex justify-between"><span>No HP</span><span className="font-mono">{svc.customer_phone}</span></div>}
+              {finalPrint.showDevice && <div className="flex justify-between"><span>Device</span><span>{svc.brand} {svc.model}</span></div>}
+              {finalPrint.showImei && svc.imei1 && <div className="flex justify-between"><span>IMEI</span><span className="font-mono text-[10px]">{svc.imei1}</span></div>}
               {svc.color && <div className="flex justify-between"><span>Warna</span><span>{svc.color}</span></div>}
-              <div className="flex justify-between"><span>Keluhan</span><span className="text-right max-w-[60%]">{svc.complaint}</span></div>
-              {svc.diagnosis?.action && <div className="flex justify-between"><span>Tindakan</span><span className="text-right max-w-[60%]">{svc.diagnosis.action}</span></div>}
-              {svc.assigned_technician_name && <div className="flex justify-between"><span>Teknisi</span><span>{svc.assigned_technician_name}</span></div>}
+              {finalPrint.showComplaint && <div className="flex justify-between"><span>Keluhan</span><span className="text-right max-w-[60%]">{svc.complaint}</span></div>}
+              {finalPrint.showComplaint && svc.diagnosis?.action && <div className="flex justify-between"><span>Tindakan</span><span className="text-right max-w-[60%]">{svc.diagnosis.action}</span></div>}
+              {finalPrint.showTechnician && svc.assigned_technician_name && <div className="flex justify-between"><span>Teknisi</span><span>{svc.assigned_technician_name}</span></div>}
             </div>
 
             {/* Ringkasan biaya */}
-            <div>
+            {finalPrint.showCosts && <div>
               <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Ringkasan Biaya</div>
-              <div className="space-y-1 mt-1">
+              {finalPrint.showItems && <div className="space-y-1 mt-1">
                 <div className="flex justify-between text-xs"><span>Biaya Jasa</span><span className="font-mono">{fmtIDR(svc.service_fee ?? svc.estimated_cost ?? 0)}</span></div>
                 {(svc.items_used || []).map((it, i) => (
                   <div key={it.id || i} className="flex justify-between text-xs">
@@ -1063,10 +1056,10 @@ export default function ServiceDetail() {
                 <div className="flex justify-between"><span>Dibayar</span><span className="font-mono">{fmtIDR(svc.total_paid || 0)}</span></div>
                 <div className="flex justify-between font-bold"><span>Kembali/Sisa</span><span className="font-mono">{fmtIDR(Math.max(0, (svc.total_paid || 0) - (svc.final_cost || 0)))}</span></div>
               </div>
-            </div>
+            </div>}
 
             {/* Hasil QC */}
-            {svc.qc_result && (
+            {finalPrint.showQc && svc.qc_result && (
               <div className="mt-3">
                 <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
                   <ShieldCheck className="size-3" /> Hasil Quality Control
@@ -1087,7 +1080,7 @@ export default function ServiceDetail() {
             )}
 
             {/* Garansi */}
-            {svc.warranty_until && (
+            {finalPrint.showWarranty && svc.warranty_until && (
               <div className="mt-3 pt-2 border-t border-dashed border-zinc-300 text-[10px]">
                 <div className="font-semibold">Garansi: {svc.warranty_days} hari</div>
                 <div className="text-zinc-500">Berlaku hingga {fmtDate(svc.warranty_until)}</div>
@@ -1095,9 +1088,7 @@ export default function ServiceDetail() {
               </div>
             )}
 
-            <div className="text-center text-[10px] text-zinc-500 mt-4 border-t border-dashed border-zinc-300 pt-2">
-              {settings?.print_footer_text || "Terima kasih telah menggunakan layanan kami."}
-            </div>
+            <PrintoutFooter settings={settings} type="service_final" fallback="Terima kasih telah menggunakan layanan kami." />
           </div>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" onClick={() => setNotaFinalOpen(false)} className="flex-1" data-testid="nota-final-close">Tutup</Button>

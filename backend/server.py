@@ -13,7 +13,7 @@ import uuid
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Query
 from starlette.middleware.cors import CORSMiddleware
@@ -362,6 +362,7 @@ class SettingsIn(BaseModel):
     printer_font_family: Optional[str] = None     # "mono" | "sans"
     printer_hide_borders: Optional[bool] = None   # true = remove borders for thermal
     printer_cut_command: Optional[str] = None     # future: escpos hex
+    printout_settings: Optional[Dict[str, Dict[str, Any]]] = None
 
 SERVICE_STATUSES = [
     "Menunggu Teknisi", "Menunggu Diagnosa", "Sedang Diagnosa", "Menunggu Persetujuan",
@@ -2225,7 +2226,8 @@ async def get_settings(user: dict = Depends(get_current_user)):
                 "print_header_address": "", "print_header_phone": "",
                 "print_footer_text": "Terima kasih telah menggunakan layanan kami.",
                 "label_header_title": "", "label_footer_text": "",
-                "qr_header_title": "", "qr_footer_text": ""}
+                "qr_header_title": "", "qr_footer_text": "",
+                "printout_settings": {}}
     s = await db.settings.find_one({"id": "main"}, {"_id": 0})
     if not s:
         await db.settings.insert_one(defaults)
