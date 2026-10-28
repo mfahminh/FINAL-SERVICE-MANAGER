@@ -2459,6 +2459,23 @@ class WhatsappSendIn(BaseModel):
     message: str
     service_id: Optional[str] = ""
 
+@api.get("/services/{sid}/whatsapp-message")
+async def service_whatsapp_message(
+    sid: str,
+    kind: Literal["create", "diagnose", "ready", "pickup"],
+    user: dict = Depends(get_current_user),
+):
+    service = await db.services.find_one({"id": sid}, {"_id": 0})
+    if not service:
+        raise HTTPException(404, "Service tidak ditemukan")
+    phone = service.get("customer_phone", "")
+    if not phone:
+        raise HTTPException(400, "Nomor WhatsApp pelanggan tidak tersedia")
+    return {
+        "phone": phone,
+        "message": await render_wa_template(kind, service),
+    }
+
 @api.post("/whatsapp/send")
 async def whatsapp_send(payload: WhatsappSendIn, user: dict = Depends(get_current_user)):
     """Manual WA send (dari halaman service detail atau tools)."""

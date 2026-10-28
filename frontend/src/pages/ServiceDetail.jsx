@@ -28,6 +28,7 @@ export default function ServiceDetail() {
   const { user } = useAuth();
   const { settings } = useBranding();
   const [svc, setSvc] = useState(null);
+  const [manualWaKind, setManualWaKind] = useState("create");
   const [spareparts, setSpareparts] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [labelOpen, setLabelOpen] = useState(false);
@@ -266,6 +267,31 @@ export default function ServiceDetail() {
     } catch (e) { toast.error("Gagal kirim"); }
   };
 
+  const openManualWA = async () => {
+    const waWindow = window.open("about:blank", "_blank");
+    if (!waWindow) {
+      toast.error("Izinkan pop-up untuk membuka WhatsApp Web");
+      return;
+    }
+
+    try {
+      const r = await api.get(`/services/${id}/whatsapp-message?kind=${manualWaKind}`);
+      const phone = String(r.data.phone || "").replace(/\D/g, "");
+      const waPhone = phone.startsWith("0") ? `62${phone.slice(1)}` : phone;
+      if (!waPhone) {
+        waWindow.close();
+        toast.error("Nomor WhatsApp pelanggan tidak valid");
+        return;
+      }
+
+      const params = new URLSearchParams({ phone: waPhone, text: r.data.message || "" });
+      waWindow.location.href = `https://web.whatsapp.com/send?${params.toString()}`;
+    } catch (e) {
+      waWindow.close();
+      toast.error(e.response?.data?.detail || "Gagal menyiapkan pesan WhatsApp");
+    }
+  };
+
   const trackUrl = `${window.location.origin}/track/${svc.service_number}`;
   const sisaRaw = (svc.final_cost || 0) - (svc.total_paid || 0);
   const sisa = Math.max(0, sisaRaw);
@@ -313,9 +339,32 @@ export default function ServiceDetail() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => sendWA("diagnose")} data-testid="send-wa-btn"><Send className="size-4" />Kirim WA</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => sendWA("diagnose")} data-testid="send-wa-btn"><Send className="size-4" />Kirim WA (Fonnte)</Button>
         </div>
       </div>
+
+      <Card className="p-4 border border-border">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <div className="text-sm font-semibold mb-2">Kirim Notifikasi WhatsApp Manual</div>
+            <Select value={manualWaKind} onValueChange={setManualWaKind}>
+              <SelectTrigger data-testid="manual-wa-template-select"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="create">Service Baru</SelectItem>
+                <SelectItem value="diagnose">Diagnosa Selesai</SelectItem>
+                <SelectItem value="ready">Siap Diambil</SelectItem>
+                <SelectItem value="pickup">Setelah Pickup</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={openManualWA} className="gap-2" data-testid="manual-wa-open-btn">
+            <Send className="size-4" />Buka WhatsApp Web
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Pesan akan menggunakan template Pengaturan dan data service ini. Periksa lalu kirim dari WhatsApp Web.
+        </p>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: details */}
