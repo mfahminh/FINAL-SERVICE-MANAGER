@@ -61,11 +61,12 @@ export default function Services() {
               <TableHead className="hidden md:table-cell">Device</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden lg:table-cell">Estimasi</TableHead>
-              <TableHead className="hidden md:table-cell">Tanggal</TableHead>
+              <TableHead className="hidden md:table-cell">Tanggal Masuk</TableHead>
+              <TableHead className="hidden md:table-cell">Tanggal Selesai</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
+            {items.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
             {items.map((s) => (
               <TableRow key={s.id} className="cursor-pointer hover:bg-accent/50" onClick={() => navigate(`/services/${s.id}`)} data-testid={`service-row-${s.service_number}`}>
                 <TableCell className="font-mono text-sm font-semibold text-primary">{s.service_number}</TableCell>
@@ -77,6 +78,11 @@ export default function Services() {
                 <TableCell><span className={`status-pill ${STATUS_COLORS[s.status] || ""}`}>{s.status}</span></TableCell>
                 <TableCell className="hidden lg:table-cell font-mono">{fmtIDR(s.estimated_cost)}</TableCell>
                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(s.created_at)}</TableCell>
+                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                  {["Selesai", "Sudah Diambil"].includes(s.status)
+                    ? fmtDate(s.completed_at || s.finished_at || s.status_history?.find((entry) => ["Selesai", "Sudah Diambil"].includes(entry.status))?.at)
+                    : ""}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

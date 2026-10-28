@@ -28,6 +28,7 @@ export default function ServiceDetail() {
   const { user } = useAuth();
   const { settings } = useBranding();
   const [svc, setSvc] = useState(null);
+  const [manualWaKind, setManualWaKind] = useState("create");
   const [spareparts, setSpareparts] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [labelOpen, setLabelOpen] = useState(false);
@@ -266,6 +267,53 @@ export default function ServiceDetail() {
     } catch (e) { toast.error("Gagal kirim"); }
   };
 
+  const openManualWA = () => {
+    const template = settings[`wa_template_${manualWaKind}`];
+    if (!template) {
+      toast.error("Template WhatsApp belum tersedia. Periksa Pengaturan terlebih dahulu.");
+      return;
+    }
+
+    const countryCode = String(settings.fonnte_country_code || "62").replace(/\D/g, "");
+    let phone = String(svc.customer_phone || "").replace(/\D/g, "");
+    if (phone.startsWith("0")) phone = `${countryCode}${phone.slice(1)}`;
+    else if (countryCode && !phone.startsWith(countryCode)) phone = `${countryCode}${phone}`;
+    if (!phone) {
+      toast.error("Nomor WhatsApp pelanggan tidak tersedia");
+      return;
+    }
+
+    const diagnosis = svc.diagnosis || {};
+    const finalCost = svc.final_cost || 0;
+    const totalPaid = svc.total_paid || 0;
+    const context = {
+      customer_name: svc.customer_name || "Pelanggan",
+      shop_name: settings.shop_name || settings.app_name || "Service HP Manager",
+      service_number: svc.service_number || "",
+      brand: svc.brand || "",
+      model: svc.model || "",
+      complaint: svc.complaint || "",
+      estimated_cost: new Intl.NumberFormat("id-ID").format(svc.estimated_cost || 0),
+      final_cost: new Intl.NumberFormat("id-ID").format(finalCost),
+      total_paid: new Intl.NumberFormat("id-ID").format(totalPaid),
+      remaining: new Intl.NumberFormat("id-ID").format(Math.max(0, finalCost - totalPaid)),
+      diagnosis: diagnosis.diagnosis || "-",
+      damage: diagnosis.damage || "-",
+      action: diagnosis.action || "-",
+      estimated_days: diagnosis.estimated_days || "-",
+      warranty_days: svc.warranty_days || 0,
+      warranty_until: (svc.warranty_until || "").slice(0, 10),
+      tracking_url: `${window.location.origin}/track/${svc.service_number || ""}`,
+    };
+    const message = template.replace(/\{([^{}]+)\}/g, (placeholder, key) =>
+      Object.prototype.hasOwnProperty.call(context, key) ? context[key] : placeholder
+    );
+    const params = new URLSearchParams({ phone, text: message });
+    const waWindow = window.open(`https://web.whatsapp.com/send?${params.toString()}`, "_blank");
+    if (!waWindow) toast.error("Izinkan pop-up untuk membuka WhatsApp Web");
+    else waWindow.opener = null;
+  };
+
   const trackUrl = `${window.location.origin}/track/${svc.service_number}`;
   const sisaRaw = (svc.final_cost || 0) - (svc.total_paid || 0);
   const sisa = Math.max(0, sisaRaw);
@@ -313,9 +361,32 @@ export default function ServiceDetail() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => sendWA("diagnose")} data-testid="send-wa-btn"><Send className="size-4" />Kirim WA</Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => sendWA("diagnose")} data-testid="send-wa-btn"><Send className="size-4" />Kirim WA (Fonnte)</Button>
         </div>
       </div>
+
+      <Card className="p-4 border border-border">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <div className="text-sm font-semibold mb-2">Kirim Notifikasi WhatsApp Manual</div>
+            <Select value={manualWaKind} onValueChange={setManualWaKind}>
+              <SelectTrigger data-testid="manual-wa-template-select"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="create">Service Baru</SelectItem>
+                <SelectItem value="diagnose">Diagnosa Selesai</SelectItem>
+                <SelectItem value="ready">Siap Diambil</SelectItem>
+                <SelectItem value="pickup">Setelah Pickup</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={openManualWA} className="gap-2" data-testid="manual-wa-open-btn">
+            <Send className="size-4" />Buka WhatsApp Web
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Pesan akan menggunakan template Pengaturan dan data service ini. Periksa lalu kirim dari WhatsApp Web.
+        </p>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: details */}
