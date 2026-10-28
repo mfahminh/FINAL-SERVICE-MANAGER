@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import PrintStyle from "@/components/PrintStyle";
 import { useBranding } from "@/context/BrandingContext";
+import { PUBLIC_APP_URL } from "@/lib/api";
 import { sendRaw, buildServiceLabel } from "@/lib/escpos";
 import { printBluetoothRaw, isBluetoothAvailable } from "@/lib/bluetooth";
 
 export default function ServiceLabel({ service, shopName = "Service HP", trackingBase }) {
   const { settings } = useBranding();
-  const trackUrl = `${trackingBase || window.location.origin}/track/${service.service_number}`;
+  const trackUrl = `${trackingBase || PUBLIC_APP_URL}/track/${service.service_number}`;
   const imeiTail = service.imei1 ? service.imei1.slice(-4) : "----";
   const title = settings?.label_header_title || settings?.print_header_title || shopName;
   const footer = settings?.label_footer_text;

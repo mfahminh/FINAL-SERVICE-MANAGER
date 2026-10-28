@@ -2382,7 +2382,7 @@ async def render_wa_template(kind: str, service: dict, extra: dict = None) -> st
         "estimated_days": diag.get("estimated_days", "-"),
         "warranty_days": service.get("warranty_days", 0),
         "warranty_until": (service.get("warranty_until") or "")[:10],
-        "tracking_url": f"{os.environ.get('PUBLIC_APP_URL', '')}/track/{service.get('service_number', '')}",
+        "tracking_url": f"{(os.environ.get('PUBLIC_APP_URL') or 'https://final-service-manager.vercel.app').rstrip('/')}/track/{service.get('service_number', '')}",
     }
     if extra:
         ctx.update(extra)

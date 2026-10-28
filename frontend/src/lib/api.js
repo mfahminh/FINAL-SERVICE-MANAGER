@@ -8,6 +8,11 @@ const BACKEND_URL =
   process.env.REACT_APP_BACKEND_URL ||
   "https://final-service-manager.onrender.com";
 
+export const PUBLIC_APP_URL = (
+  process.env.REACT_APP_PUBLIC_APP_URL ||
+  "https://final-service-manager.vercel.app"
+).replace(/\/+$/, "");
+
 export const API = `${BACKEND_URL}/api`;
 
 const api = axios.create({

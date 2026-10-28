@@ -14,11 +14,24 @@ export default function PublicTrack() {
   const [err, setErr] = useState("");
 
   const search = async (n) => {
-    setErr(""); setData(null);
+    const serviceNumber = String(n || "").trim().toUpperCase();
+    setErr("");
+    setData(null);
+    if (!serviceNumber) {
+      setErr("Masukkan nomor service terlebih dahulu");
+      return;
+    }
+    setNumber(serviceNumber);
     try {
-      const r = await api.get(`/track/${n}`);
+      const r = await api.get(`/track/${encodeURIComponent(serviceNumber)}`, { withCredentials: false });
       setData(r.data);
-    } catch (e) { setErr("Nomor service tidak ditemukan"); }
+    } catch (e) {
+      if (e.response?.status === 404) {
+        setErr("Nomor service tidak ditemukan. Periksa kembali nomor yang dimasukkan.");
+      } else {
+        setErr("Gagal menghubungi server. Periksa koneksi internet lalu coba lagi.");
+      }
+    }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
