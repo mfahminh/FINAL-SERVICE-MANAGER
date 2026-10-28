@@ -320,10 +320,8 @@ export async function buildFinalServiceNota(svc, settings) {
     separator("-", w),
   ];
   if (config.showCosts) {
-    chunks.push(kv("Biaya Jasa", fmtRp(svc.service_fee ?? svc.estimated_cost ?? 0), w));
-    if (config.showItems) {
-      for (const it of items) chunks.push(kv(`${it.name} x${it.qty}`, fmtRp((it.price || 0) * (it.qty || 0)), w));
-    }
+    chunks.push(txt("Ringkasan Biaya\nBiaya Jasa\n"));
+    if (config.showItems) for (const it of items) chunks.push(txt(`${it.name} x${it.qty}\n`));
     chunks.push(
       separator("-", w),
       bold(true), kv("TOTAL", fmtRp(svc.final_cost || 0), w), bold(false),

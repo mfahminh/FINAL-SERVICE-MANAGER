@@ -1043,12 +1043,9 @@ export default function ServiceDetail() {
             {finalPrint.showCosts && <div>
               <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Ringkasan Biaya</div>
               {finalPrint.showItems && <div className="space-y-1 mt-1">
-                <div className="flex justify-between text-xs"><span>Biaya Jasa</span><span className="font-mono">{fmtIDR(svc.service_fee ?? svc.estimated_cost ?? 0)}</span></div>
+                <div className="text-xs">Biaya Jasa</div>
                 {(svc.items_used || []).map((it, i) => (
-                  <div key={it.id || i} className="flex justify-between text-xs">
-                    <span>{it.name} × {it.qty}</span>
-                    <span className="font-mono">{fmtIDR((it.price || 0) * (it.qty || 0))}</span>
-                  </div>
+                  <div key={it.id || i} className="text-xs">{it.name} × {it.qty}</div>
                 ))}
               </div>
               <div className="border-t border-dashed border-zinc-300 mt-2 pt-1 space-y-0.5 text-xs">
