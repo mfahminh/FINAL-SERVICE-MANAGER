@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
-import api, { fmtDate, fmtIDR, STATUS_COLORS, SERVICE_STATUSES, maskPhone } from "@/lib/api";
+import api, { fmtDate, fmtIDR, STATUS_COLORS, SERVICE_STATUSES, maskPhone, PUBLIC_APP_URL } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -303,7 +303,7 @@ export default function ServiceDetail() {
       estimated_days: diagnosis.estimated_days || "-",
       warranty_days: svc.warranty_days || 0,
       warranty_until: (svc.warranty_until || "").slice(0, 10),
-      tracking_url: `${window.location.origin}/track/${svc.service_number || ""}`,
+      tracking_url: `${PUBLIC_APP_URL}/track/${svc.service_number || ""}`,
     };
     const message = template.replace(/\{([^{}]+)\}/g, (placeholder, key) =>
       Object.prototype.hasOwnProperty.call(context, key) ? context[key] : placeholder
@@ -314,7 +314,7 @@ export default function ServiceDetail() {
     else waWindow.opener = null;
   };
 
-  const trackUrl = `${window.location.origin}/track/${svc.service_number}`;
+  const trackUrl = `${PUBLIC_APP_URL}/track/${svc.service_number}`;
   const sisaRaw = (svc.final_cost || 0) - (svc.total_paid || 0);
   const sisa = Math.max(0, sisaRaw);
   const kembali = Math.max(0, -sisaRaw);
