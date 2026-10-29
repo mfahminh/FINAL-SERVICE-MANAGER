@@ -11,6 +11,7 @@ import { getPrintoutConfig, PRINTOUT_TYPES } from "@/lib/printoutSettings";
 export default function PrintoutSettings({ settings, onChange, onSave }) {
   const [activeType, setActiveType] = useState("service_intake");
   const definition = PRINTOUT_TYPES[activeType];
+  const config = getPrintoutConfig(settings, activeType);
   const shopName = settings.print_header_title || settings.shop_name || settings.app_name || "Nama Toko";
   const title = activeType === "service_label"
     ? settings.label_header_title || "SERVICE TAG"
