@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api, { fmtDate, fmtIDR } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Download, FileSpreadsheet, FileText, Printer, Receipt, Users, Wrench, Package, ShoppingCart, TrendingUp } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Printer, Bluetooth, Receipt, Users, Wrench, Package, ShoppingCart, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import PrintStyle from "@/components/PrintStyle";
 import { useBranding } from "@/context/BrandingContext";
 import { getPrintoutConfig } from "@/lib/printoutSettings";
 import { PrintoutFooter, PrintoutHeader } from "@/components/PrintoutHeader";
+import { buildSparepartsStockReport, sendRaw } from "@/lib/escpos";
+import { isBluetoothAvailable, printBluetoothRaw } from "@/lib/bluetooth";
 
 const GROUP_LABELS = { item: "Per Item", day: "Per Hari", month: "Per Bulan" };
 
@@ -69,6 +71,10 @@ export default function Reports() {
   const [spSales, setSpSales] = useState(null);
   const [spSalesGroup, setSpSalesGroup] = useState("item");
   const [spSalesSource, setSpSalesSource] = useState("all");
+  const [partsSearch, setPartsSearch] = useState("");
+  const [partsBrand, setPartsBrand] = useState("all");
+  const [partsStockFilter, setPartsStockFilter] = useState("all");
+  const [partsSort, setPartsSort] = useState("name");
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -85,6 +91,53 @@ export default function Reports() {
     setServices(r.data);
   };
   const loadParts = async () => setParts((await api.get("/reports/spareparts")).data);
+  const filteredParts = useMemo(() => {
+    const query = partsSearch.trim().toLocaleLowerCase("id-ID");
+    const filtered = (parts || []).filter((part) => {
+      const stock = Number(part.stock) || 0;
+      const minimum = Number(part.min_stock) || 0;
+      const matchesSearch = !query || [part.name, part.code, part.brand, part.category, part.location]
+        .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(query));
+      const matchesBrand = partsBrand === "all" || (part.brand || "Tanpa merek") === partsBrand;
+      const matchesStock = partsStockFilter === "all"
+        || (partsStockFilter === "out" && stock <= 0)
+        || (partsStockFilter === "low" && stock > 0 && stock <= minimum)
+        || (partsStockFilter === "available" && stock > minimum);
+      return matchesSearch && matchesBrand && matchesStock;
+    });
+
+    return filtered.sort((a, b) => {
+      const nameCompare = String(a.name || "").localeCompare(String(b.name || ""), "id");
+      const brandCompare = String(a.brand || "").localeCompare(String(b.brand || ""), "id");
+      if (partsSort === "brand") return brandCompare || nameCompare;
+      if (partsSort === "stock_asc") return (Number(a.stock) || 0) - (Number(b.stock) || 0) || nameCompare;
+      if (partsSort === "stock_desc") return (Number(b.stock) || 0) - (Number(a.stock) || 0) || nameCompare;
+      return nameCompare;
+    });
+  }, [parts, partsSearch, partsBrand, partsStockFilter, partsSort]);
+  const partBrands = useMemo(
+    () => [...new Set((parts || []).map((part) => part.brand || "Tanpa merek"))].sort((a, b) => a.localeCompare(b, "id")),
+    [parts],
+  );
+  const printParts = async (destination) => {
+    try {
+      const data = await buildSparepartsStockReport(filteredParts, settings, {
+        stockFilter: partsStockFilter,
+        brand: partsBrand,
+        search: partsSearch.trim(),
+        sortBy: partsSort,
+      });
+      if (destination === "usb") {
+        await sendRaw(data);
+        toast.success("Laporan stok terkirim ke printer USB");
+      } else {
+        await printBluetoothRaw(data);
+        toast.success("Laporan stok terkirim ke printer Bluetooth");
+      }
+    } catch (e) {
+      toast.error(e.message || "Gagal mencetak laporan stok");
+    }
+  };
   const loadTechsProfit = async () => {
     const r = await api.get(`/reports/technicians-profit?start=${start}&end=${end}`);
     setTechsProfit(r.data);
@@ -277,18 +330,83 @@ export default function Reports() {
         {/* SPAREPARTS */}
         <TabsContent value="parts">
           <Card className="border border-border">
-            <div className="p-4 flex justify-end gap-2">
-              <ExportButtons type="spareparts" params={{ start, end }} />
+            <div className="p-4 space-y-4 border-b border-border">
+              <div className="flex flex-wrap justify-between items-end gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Pengecekan & Stock Opname</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {filteredParts.length} dari {parts?.length || 0} sparepart
+                    {parts && <> • {parts.filter((p) => Number(p.stock) <= 0).length} kosong • {parts.filter((p) => Number(p.stock) > 0 && Number(p.stock) <= Number(p.min_stock || 0)).length} menipis</>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <ExportButtons type="spareparts" params={{ start, end }} />
+                  <Button variant="secondary" size="sm" onClick={() => printParts("usb")} className="gap-2" data-testid="spareparts-usb-print" disabled={!parts}>
+                    <Printer className="size-4" />USB
+                  </Button>
+                  {isBluetoothAvailable() && (
+                    <Button variant="secondary" size="sm" onClick={() => printParts("bluetooth")} className="gap-2" data-testid="spareparts-bluetooth-print" disabled={!parts}>
+                      <Bluetooth className="size-4" />Bluetooth
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                <div>
+                  <Label className="text-xs">Cari sparepart</Label>
+                  <Input value={partsSearch} onChange={(e) => setPartsSearch(e.target.value)} placeholder="Nama, kode, kategori, lokasi..." data-testid="spareparts-search" />
+                </div>
+                <div>
+                  <Label className="text-xs">Merek</Label>
+                  <Select value={partsBrand} onValueChange={setPartsBrand}>
+                    <SelectTrigger data-testid="spareparts-brand-filter"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua merek</SelectItem>
+                      {partBrands.map((brand) => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Kondisi stok</Label>
+                  <Select value={partsStockFilter} onValueChange={setPartsStockFilter}>
+                    <SelectTrigger data-testid="spareparts-stock-filter"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua stok</SelectItem>
+                      <SelectItem value="out">Stok kosong</SelectItem>
+                      <SelectItem value="low">Stok menipis</SelectItem>
+                      <SelectItem value="available">Stok tersedia</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Urutkan</Label>
+                  <Select value={partsSort} onValueChange={setPartsSort}>
+                    <SelectTrigger data-testid="spareparts-sort"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="name">Nama alfabetis A-Z</SelectItem>
+                      <SelectItem value="brand">Merek A-Z</SelectItem>
+                      <SelectItem value="stock_asc">Stok terendah</SelectItem>
+                      <SelectItem value="stock_desc">Stok tertinggi</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
             <Table>
-              <TableHeader><TableRow><TableHead>Kode</TableHead><TableHead>Nama</TableHead><TableHead className="text-right">Stok</TableHead><TableHead className="text-right">Modal</TableHead><TableHead className="text-right">Jual</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Kode</TableHead><TableHead>Nama</TableHead><TableHead>Merek</TableHead><TableHead>Kategori</TableHead><TableHead>Lokasi</TableHead><TableHead className="text-right">Stok</TableHead><TableHead className="text-right">Min. Stok</TableHead><TableHead>Kondisi</TableHead><TableHead className="text-right">Modal</TableHead><TableHead className="text-right">Jual</TableHead></TableRow></TableHeader>
               <TableBody>
-                {!parts && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Klik tab untuk muat data</TableCell></TableRow>}
-                {parts?.map((p) => (
+                {!parts && <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Klik tab untuk muat data</TableCell></TableRow>}
+                {parts && filteredParts.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Tidak ada sparepart sesuai filter</TableCell></TableRow>}
+                {filteredParts.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="font-mono text-xs">{p.code}</TableCell>
                     <TableCell>{p.name}</TableCell>
-                    <TableCell className="text-right font-mono">{p.stock}</TableCell>
+                    <TableCell>{p.brand || "-"}</TableCell>
+                    <TableCell>{p.category || "-"}</TableCell>
+                    <TableCell>{p.location || "-"}</TableCell>
+                    <TableCell className={`text-right font-mono ${Number(p.stock) <= Number(p.min_stock || 0) ? "font-bold text-amber-700" : ""}`}>{p.stock}</TableCell>
+                    <TableCell className="text-right font-mono">{p.min_stock || 0}</TableCell>
+                    <TableCell className="text-xs">{Number(p.stock) <= 0 ? "Kosong - order" : Number(p.stock) <= Number(p.min_stock || 0) ? "Menipis - order" : "Cukup"}</TableCell>
                     <TableCell className="text-right font-mono">{fmtIDR(p.cost_price)}</TableCell>
                     <TableCell className="text-right font-mono">{fmtIDR(p.sell_price)}</TableCell>
                   </TableRow>
