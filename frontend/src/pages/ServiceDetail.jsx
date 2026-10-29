@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranding } from "@/context/BrandingContext";
 import ServiceLabel from "@/components/ServiceLabel";
 import PrintStyle from "@/components/PrintStyle";
+import SearchableSparepartSelect from "@/components/SearchableSparepartSelect";
 import { PrintoutFooter, PrintoutHeader } from "@/components/PrintoutHeader";
 import { getPrintoutConfig } from "@/lib/printoutSettings";
 import { sendRaw, buildFinalServiceNota, buildServiceIntakeReceipt } from "@/lib/escpos";
@@ -408,6 +409,25 @@ export default function ServiceDetail() {
               <div><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Warna</div><div>{svc.color || "-"}</div></div>
               <div><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Kelengkapan</div><div className="text-xs">{svc.accessories?.join(", ") || "-"}</div></div>
               <div className="col-span-full"><div className="text-[10px] uppercase text-muted-foreground tracking-wider">Keluhan</div><div>{svc.complaint}</div></div>
+              {(svc.device_password || svc.pin || svc.pattern) && (
+                <div className="col-span-full border-t border-border pt-3">
+                  <div className="text-[10px] uppercase text-muted-foreground tracking-wider mb-2">Akses Device</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Password HP</div>
+                      <div className="font-mono break-all" data-testid="device-password-display">{svc.device_password || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">PIN</div>
+                      <div className="font-mono break-all" data-testid="device-pin-display">{svc.pin || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Pola</div>
+                      <div className="font-mono break-all" data-testid="device-pattern-display">{svc.pattern || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -511,10 +531,16 @@ export default function ServiceDetail() {
                   <DialogContent>
                     <DialogHeader><DialogTitle>Pakai Sparepart</DialogTitle></DialogHeader>
                     <div className="space-y-3">
-                      <Select value={part.sparepart_id} onValueChange={(v) => setPart({ ...part, sparepart_id: v })}>
-                        <SelectTrigger data-testid="part-select"><SelectValue placeholder="Pilih sparepart..." /></SelectTrigger>
-                        <SelectContent>{spareparts.map((s) => <SelectItem key={s.id} value={s.id} disabled={s.stock <= 0}>{s.name} • Stok: {s.stock} • {fmtIDR(s.sell_price)}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <SearchableSparepartSelect
+                        items={spareparts}
+                        value={part.sparepart_id}
+                        onValueChange={(v) => setPart({ ...part, sparepart_id: v })}
+                        getSearchText={(s) => `${s.name} ${s.code} ${s.brand || ""}`}
+                        getOptionLabel={(s) => `${s.name} • Stok: ${s.stock} • ${fmtIDR(s.sell_price)}`}
+                        renderOption={(s) => <span>{s.name} • Stok: {s.stock} • {fmtIDR(s.sell_price)}</span>}
+                        isDisabled={(s) => s.stock <= 0}
+                        testId="part-select"
+                      />
                       <div><Label>Qty</Label><Input type="number" value={part.qty} onChange={(e) => setPart({ ...part, qty: e.target.value })} data-testid="part-qty" /></div>
                       <Button onClick={usePart} className="w-full" data-testid="submit-part-btn">Gunakan</Button>
                     </div>
