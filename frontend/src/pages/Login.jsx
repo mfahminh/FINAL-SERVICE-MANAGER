@@ -4,14 +4,18 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Wrench, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiErrorDetail } from "@/lib/api";
 
+const REMEMBERED_EMAIL_KEY = "service-manager-remembered-email";
+
 export default function Login() {
   const { login, error } = useAuth();
-  const [email, setEmail] = useState("owner@servicehp.id");
-  const [password, setPassword] = useState("owner123");
+  const [email, setEmail] = useState(() => localStorage.getItem(REMEMBERED_EMAIL_KEY) || "");
+  const [rememberEmail, setRememberEmail] = useState(() => Boolean(localStorage.getItem(REMEMBERED_EMAIL_KEY)));
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const navigate = useNavigate();
@@ -19,6 +23,12 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    try {
+      if (rememberEmail) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+      else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+    } catch {
+      toast.error("Preferensi ingat email tidak dapat disimpan di perangkat ini.");
+    }
     const ok = await login(email, password);
     setLoading(false);
     if (ok) { toast.success("Login berhasil"); navigate("/"); }
@@ -98,21 +108,16 @@ export default function Login() {
                   <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                     data-testid="login-password-input" required className="mt-1.5" />
                 </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="remember-email" checked={rememberEmail} onCheckedChange={(checked) => setRememberEmail(checked === true)}
+                    data-testid="remember-email-checkbox" />
+                  <Label htmlFor="remember-email" className="text-sm font-normal cursor-pointer">Ingat email di perangkat ini</Label>
+                </div>
                 {error && <div className="text-sm text-destructive bg-destructive/10 border border-destructive/30 px-3 py-2 rounded-md" data-testid="login-error">{error}</div>}
                 <Button type="submit" disabled={loading} className="w-full gap-2" data-testid="login-submit-btn">
                   {loading ? "Memproses..." : "Masuk"} <ArrowRight className="size-4" />
                 </Button>
               </form>
-              <div className="mt-8 p-4 bg-muted/50 border border-border rounded-md">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Demo Accounts</div>
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <button type="button" onClick={() => { setEmail("owner@servicehp.id"); setPassword("owner123"); }} className="text-left hover:text-primary">owner@servicehp.id</button>
-                  <button type="button" onClick={() => { setEmail("admin@servicehp.id"); setPassword("admin123"); }} className="text-left hover:text-primary">admin@servicehp.id</button>
-                  <button type="button" onClick={() => { setEmail("teknisi@servicehp.id"); setPassword("teknisi123"); }} className="text-left hover:text-primary">teknisi@servicehp.id</button>
-                  <button type="button" onClick={() => { setEmail("kasir@servicehp.id"); setPassword("kasir123"); }} className="text-left hover:text-primary">kasir@servicehp.id</button>
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-2">password = {`{role}`}123</div>
-              </div>
             </>
           ) : (
             <>

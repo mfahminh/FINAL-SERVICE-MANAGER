@@ -2576,15 +2576,14 @@ async def seed():
     await db.customers.create_index("phone")
     await db.spareparts.create_index("code")
 
-    default_users = [
-        ("owner@servicehp.id", "owner123", "Pak Budi", "owner"),
-        ("admin@servicehp.id", "admin123", "Sari Admin", "admin"),
-        ("teknisi@servicehp.id", "teknisi123", "Andi Teknisi", "teknisi"),
-        ("kasir@servicehp.id", "kasir123", "Rina Kasir", "kasir"),
-    ]
-    for email, pwd, name, role in default_users:
-        existing = await db.users.find_one({"email": email})
-        if not existing:
+    if await db.users.count_documents({}) == 0:
+        default_users = [
+            ("owner@servicehp.id", "owner123", "Pak Budi", "owner"),
+            ("admin@servicehp.id", "admin123", "Sari Admin", "admin"),
+            ("teknisi@servicehp.id", "teknisi123", "Andi Teknisi", "teknisi"),
+            ("kasir@servicehp.id", "kasir123", "Rina Kasir", "kasir"),
+        ]
+        for email, pwd, name, role in default_users:
             await db.users.insert_one({
                 "id": gen_id(), "email": email, "password_hash": hash_password(pwd),
                 "name": name, "role": role, "phone": "", "active": True, "created_at": now_iso()
