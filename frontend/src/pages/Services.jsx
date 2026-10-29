@@ -43,7 +43,7 @@ export default function Services() {
         <div className="p-4 border-b border-border flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[240px] max-w-md">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Cari nomor / IMEI / nama..." className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} data-testid="services-search-input" />
+            <Input placeholder="Cari nomor / IMEI / nama / perangkat..." className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} data-testid="services-search-input" />
           </div>
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-[200px]" data-testid="status-filter"><SelectValue /></SelectTrigger>

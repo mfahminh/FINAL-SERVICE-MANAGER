@@ -78,9 +78,9 @@ export default function Layout() {
     <div className="min-h-screen flex bg-background text-foreground">
       {/* Sidebar */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-40 h-screen w-64 border-r border-border bg-card transition-transform ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`fixed lg:sticky top-0 left-0 z-40 flex h-screen w-64 flex-col overflow-hidden border-r border-border bg-card transition-transform ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
-        <div className="h-16 px-5 flex items-center gap-2 border-b border-border">
+        <div className="h-16 shrink-0 px-5 flex items-center gap-2 border-b border-border">
           {settings.logo ? (
             <img src={settings.logo} alt="logo" className="size-9 rounded-lg object-cover" />
           ) : (
@@ -93,7 +93,7 @@ export default function Layout() {
             <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Service Management</div>
           </div>
         </div>
-        <nav className="p-3 space-y-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 space-y-1">
           {nav.map((item) => {
             const Icon = item.icon;
             const count = item.notifKey ? (notif[item.notifKey] || 0) : 0;
@@ -125,7 +125,7 @@ export default function Layout() {
             );
           })}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border">
+        <div className="shrink-0 p-4 border-t border-border bg-card">
           <div className="flex items-center gap-3 mb-3">
             <div className="size-9 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold uppercase">
               {user?.name?.[0]}

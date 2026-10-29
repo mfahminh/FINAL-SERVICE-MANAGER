@@ -304,7 +304,7 @@ export default function Reports() {
             <div className="p-4 flex flex-wrap justify-between items-end gap-3">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Laba & Komisi Teknisi</div>
-                <div className="text-xs text-muted-foreground mt-1">Komisi = % teknisi × Biaya Jasa (dari service Selesai / Sudah Diambil pada periode)</div>
+                <div className="text-xs text-muted-foreground mt-1">Komisi dihitung satu kali saat service berstatus Selesai; tanggal pickup tidak mengubah periode komisi.</div>
               </div>
               <div className="flex gap-2 items-end">
                 <Button variant="outline" size="sm" onClick={loadTechsProfit} data-testid="techs-apply">Terapkan</Button>

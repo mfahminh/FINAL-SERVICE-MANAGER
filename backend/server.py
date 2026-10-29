@@ -97,11 +97,38 @@ def calculate_service_profit(service: dict) -> float:
         )
     return (final_cost or 0) - (service.get("sparepart_cost", 0) or 0)
 
+def service_completed_at(service: dict, allow_legacy_fallback: bool = True) -> Optional[str]:
+    completion_dates = [
+        item.get("at")
+        for item in service.get("status_history") or []
+        if item.get("status") == "Selesai" and item.get("at")
+    ]
+    if completion_dates:
+        return min(completion_dates)
+    if service.get("completed_at"):
+        return service["completed_at"]
+    if allow_legacy_fallback:
+        return service.get("finished_at") or service.get("created_at")
+    return None
+
 def completed_date_filter(start: str, end: str) -> dict:
     date_range = {"$gte": start, "$lte": end + "T23:59:59.999999"}
+    completion_history = {
+        "status_history": {
+            "$elemMatch": {
+                "status": "Selesai",
+                "at": {"$exists": True, "$nin": [None, ""]},
+            }
+        }
+    }
     return {"$or": [
-        {"completed_at": date_range},
-        {"completed_at": {"$in": [None, ""]}, "created_at": date_range},
+        {"status_history": {"$elemMatch": {"status": "Selesai", "at": date_range}}},
+        {"completed_at": date_range, "$nor": [completion_history]},
+        {
+            "completed_at": {"$in": [None, ""]},
+            "created_at": date_range,
+            "$nor": [completion_history],
+        },
     ]}
 
 def gen_id() -> str:
@@ -540,6 +567,8 @@ async def list_services(status: Optional[str] = None, q: str = "",
         query["$or"] = [
             {"service_number": {"$regex": q, "$options": "i"}},
             {"imei1": {"$regex": q, "$options": "i"}},
+            {"brand": {"$regex": q, "$options": "i"}},
+            {"model": {"$regex": q, "$options": "i"}},
             {"customer_name": {"$regex": q, "$options": "i"}},
             {"customer_phone": {"$regex": q, "$options": "i"}},
         ]
@@ -598,13 +627,20 @@ async def update_status(sid: str, data: StatusUpdate, user: dict = Depends(requi
     s = await db.services.find_one({"id": sid})
     if not s: raise HTTPException(404)
     status_at = now_iso()
-    history = s.get("status_history", [])
+    history = list(s.get("status_history", []))
     history.append({"status": data.status, "note": data.note or "", "by": user["name"], "at": status_at})
     update = {"status": data.status, "status_history": history, "updated_at": status_at}
-    if data.status in ("Selesai", "Sudah Diambil"):
-        update["profit"] = calculate_service_profit(s)
-        if s.get("status") not in ("Selesai", "Sudah Diambil") or not s.get("completed_at"):
+    if data.status == "Selesai":
+        completion_at = service_completed_at(s, allow_legacy_fallback=False)
+        if completion_at:
+            update["completed_at"] = completion_at
+        elif s.get("status") not in ("Selesai", "Sudah Diambil"):
             update["completed_at"] = status_at
+            update["profit"] = calculate_service_profit(s)
+    elif data.status == "Sudah Diambil":
+        completion_at = service_completed_at(s)
+        if completion_at and completion_at != s.get("completed_at"):
+            update["completed_at"] = completion_at
 
     # If cancelled, handle sparepart choice
     if data.status == "Dibatalkan":
@@ -821,20 +857,22 @@ async def submit_qc(sid: str, data: QCCheckIn, user: dict = Depends(require_role
     qc_history = s.get("qc_history", [])
     qc_history.append(qc_result)
 
-    history = s.get("status_history", [])
+    history = list(s.get("status_history", []))
     if all_ok:
-        completed_at = now_iso()
+        previous_completion_at = service_completed_at(s, allow_legacy_fallback=False)
+        completed_at = previous_completion_at or now_iso()
         history.append({"status": "Selesai", "note": "QC PASS - siap diambil", "by": user["name"], "at": completed_at})
         update = {
             "status": "Selesai",
             "completed_at": completed_at,
-            "profit": calculate_service_profit(s),
             "qc_result": qc_result,
             "qc_history": qc_history,
             "qc_passed": True,
             "qc_failed": False,
             "status_history": history,
         }
+        if not previous_completion_at:
+            update["profit"] = calculate_service_profit(s)
     else:
         note = f"QC FAIL: {', '.join([it['name'] for it in failed_items])}. Kembali ke teknisi."
         history.append({"status": "Sedang Dikerjakan", "note": note, "by": user["name"], "at": now_iso()})
@@ -1285,7 +1323,7 @@ async def report_technicians_profit(start: Optional[str] = None, end: Optional[s
                 "brand": s.get("brand"),
                 "model": s.get("model"),
                 "created_at": s.get("created_at"),
-                "completed_at": s.get("completed_at") or s.get("created_at"),
+                "completed_at": service_completed_at(s),
                 "final_cost": s.get("final_cost", 0) or 0,
                 "service_fee": fee,
                 "commission": comm,
@@ -1323,7 +1361,7 @@ async def technician_salary_slip(tid: str, start: str, end: str, user: dict = De
         total_commission += comm
         detail.append({
             "service_number": s.get("service_number"),
-            "date": s.get("completed_at") or s.get("created_at"),
+            "date": service_completed_at(s),
             "customer_name": s.get("customer_name"),
             "brand_model": f"{s.get('brand','')} {s.get('model','')}".strip(),
             "service_fee": fee,
@@ -2061,7 +2099,7 @@ async def export_report(
             total_fee += fee
             total_comm += comm
             rows.append([
-                (s.get("completed_at") or s.get("created_at") or "")[:10],
+                (service_completed_at(s) or "")[:10],
                 s.get("service_number", ""),
                 s.get("customer_name", ""),
                 f"{s.get('brand','')} {s.get('model','')}".strip(),
