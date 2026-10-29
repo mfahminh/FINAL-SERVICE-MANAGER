@@ -349,6 +349,61 @@ export async function buildFinalServiceNota(svc, settings) {
   return concat(...chunks);
 }
 
+export async function buildSparepartsStockReport(items, settings, filters = {}) {
+  const w = widthFor(settings?.printer_nota_width);
+  const filterLabels = {
+    all: "Semua stok",
+    out: "Stok kosong",
+    low: "Stok menipis",
+    available: "Stok tersedia",
+  };
+  const sortLabels = {
+    name: "Nama A-Z",
+    brand: "Merek",
+    stock_asc: "Stok terendah",
+    stock_desc: "Stok tertinggi",
+  };
+  const emptyCount = items.filter((item) => Number(item.stock) <= 0).length;
+  const lowCount = items.filter((item) => Number(item.stock) > 0 && Number(item.stock) <= Number(item.min_stock || 0)).length;
+  const chunks = [
+    initPrinter(),
+    ...(await printHeader(settings, "service_final", "LAPORAN STOK SPAREPART", w, settings?.printer_nota_width)),
+    kv("Dicetak", fmtDate(new Date().toISOString()), w),
+    kv("Kondisi", filterLabels[filters.stockFilter] || filterLabels.all, w),
+    filters.brand && filters.brand !== "all" ? kv("Merek", filters.brand, w) : new Uint8Array(),
+    filters.search ? kv("Pencarian", filters.search, w) : new Uint8Array(),
+    kv("Urutan", sortLabels[filters.sortBy] || sortLabels.name, w),
+    separator("-", w),
+    kv("Jumlah item", items.length, w),
+    kv("Stok kosong", emptyCount, w),
+    kv("Stok menipis", lowCount, w),
+    separator("=", w),
+  ];
+
+  if (items.length === 0) {
+    chunks.push(line("Tidak ada sparepart sesuai filter", { align: 1 }), separator("-", w));
+  }
+
+  items.forEach((item, index) => {
+    const stock = Number(item.stock) || 0;
+    const minStock = Number(item.min_stock) || 0;
+    const status = stock <= 0 ? "KOSONG - ORDER" : stock <= minStock ? "MENIPIS - ORDER" : "CUKUP";
+    chunks.push(
+      line(`${index + 1}. ${item.name || "-"}`, { bold: true }),
+      kv("Merek", item.brand || "-", w),
+      kv("Kode", item.code || "-", w),
+      item.category ? kv("Kategori", item.category, w) : new Uint8Array(),
+      item.location ? kv("Lokasi", item.location, w) : new Uint8Array(),
+      kv("Stok", `${stock}  Min: ${minStock}`, w),
+      line(status, { bold: stock <= minStock }),
+      separator("-", w),
+    );
+  });
+
+  chunks.push(feed(3), cutPaper());
+  return concat(...chunks);
+}
+
 export async function buildPOSReceipt(sale, settings) {
   const w = widthFor(settings?.printer_nota_width);
   const config = getPrintoutConfig(settings, "pos_sale");
