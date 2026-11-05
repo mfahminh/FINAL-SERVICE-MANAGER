@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api, { fmtDate, fmtIDR, STATUS_COLORS, SERVICE_STATUSES, maskPhone } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -23,19 +23,22 @@ const EMPTY_FORM = {
   estimated_cost: 0, dp: 0,
 };
 
-const paymentStatus = (service) => {
+const getPaymentStatus = (service) => {
   const paid = Math.max(0, Number(service.total_paid) || 0);
   const due = Math.max(0, Number(service.final_cost ?? service.estimated_cost) || 0);
-  if (paid === 0) return { label: "Belum bayar", className: "border-red-200 bg-red-50 text-red-700" };
-  if (paid >= due) return { label: "Lunas", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
-  return { label: "Belum lunas", className: "border-amber-200 bg-amber-50 text-amber-700" };
+  if (paid === 0) return { value: "unpaid", label: "Belum bayar", className: "border-red-200 bg-red-50 text-red-700" };
+  if (paid >= due) return { value: "paid", label: "Lunas", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  return { value: "partial", label: "Belum lunas", className: "border-amber-200 bg-amber-50 text-amber-700" };
 };
 
 export default function Services() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
+  const [technicians, setTechnicians] = useState([]);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
+  const [technicianId, setTechnicianId] = useState("all");
+  const [payment, setPayment] = useState("all");
   const [customers, setCustomers] = useState([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingService, setEditingService] = useState(null);
@@ -55,6 +58,19 @@ export default function Services() {
   useEffect(() => {
     if (canManageServices) api.get("/customers").then((r) => setCustomers(r.data));
   }, [canManageServices]);
+
+  useEffect(() => {
+    api.get("/technicians")
+      .then((r) => setTechnicians(r.data))
+      .catch((e) => toast.error(e.response?.data?.detail || "Gagal memuat daftar teknisi"));
+  }, []);
+
+  const filteredItems = useMemo(() => items.filter((service) => {
+    const matchesTechnician = technicianId === "all"
+      || (technicianId === "unassigned" ? !service.assigned_technician_id : service.assigned_technician_id === technicianId);
+    const matchesPayment = payment === "all" || getPaymentStatus(service).value === payment;
+    return matchesTechnician && matchesPayment;
+  }), [items, technicianId, payment]);
 
   const canEditOrDelete = (service) => (
     canManageServices
@@ -184,25 +200,52 @@ export default function Services() {
       </Dialog>
 
       <Card className="border border-border">
-        <div className="p-4 border-b border-border flex flex-wrap gap-3">
+        <div className="p-4 border-b border-border grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
           <div className="relative flex-1 min-w-[240px] max-w-md">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Cari nomor / IMEI / nama / perangkat..." className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} data-testid="services-search-input" />
           </div>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[200px]" data-testid="status-filter"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Status</SelectItem>
-              {SERVICE_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Status service</div>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger data-testid="status-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                {SERVICE_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Teknisi</div>
+            <Select value={technicianId} onValueChange={setTechnicianId}>
+              <SelectTrigger data-testid="technician-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Teknisi</SelectItem>
+                <SelectItem value="unassigned">Belum ditugaskan</SelectItem>
+                {technicians.map((technician) => <SelectItem key={technician.id} value={technician.id}>{technician.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Status pembayaran</div>
+            <Select value={payment} onValueChange={setPayment}>
+              <SelectTrigger data-testid="payment-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Pembayaran</SelectItem>
+                <SelectItem value="unpaid">Belum bayar</SelectItem>
+                <SelectItem value="partial">Belum lunas</SelectItem>
+                <SelectItem value="paid">Lunas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>No. Service</TableHead>
               <TableHead>Pelanggan</TableHead>
-              <TableHead className="hidden md:table-cell">Device</TableHead>
+              <TableHead>Device</TableHead>
+              <TableHead className="hidden md:table-cell">Dikerjakan oleh</TableHead>
               <TableHead className="hidden lg:table-cell">Keluhan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Pembayaran</TableHead>
@@ -213,20 +256,25 @@ export default function Services() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 && <TableRow><TableCell colSpan={canManageServices ? 10 : 9} className="text-center text-muted-foreground py-12">Belum ada service</TableCell></TableRow>}
-            {items.map((s) => (
+            {filteredItems.length === 0 && <TableRow><TableCell colSpan={canManageServices ? 11 : 10} className="text-center text-muted-foreground py-12">{items.length === 0 ? "Belum ada service" : "Tidak ada service sesuai filter"}</TableCell></TableRow>}
+            {filteredItems.map((s) => (
               <TableRow key={s.id} className="cursor-pointer hover:bg-accent/50" onClick={() => navigate(`/services/${s.id}`)} data-testid={`service-row-${s.service_number}`}>
                 <TableCell className="font-mono text-sm font-semibold text-primary">{s.service_number}</TableCell>
                 <TableCell>
                   <div className="font-semibold">{s.customer_name}</div>
                   <div className="text-xs text-muted-foreground font-mono">{maskPhone(s.customer_phone, user?.role)}</div>
                 </TableCell>
-                <TableCell className="hidden md:table-cell text-sm">{s.brand} {s.model}<div className="text-xs text-muted-foreground font-mono">{s.imei1}</div></TableCell>
+                <TableCell className="text-sm">
+                  {s.brand} {s.model}
+                  {s.imei1 && <div className="hidden sm:block text-xs text-muted-foreground font-mono">{s.imei1}</div>}
+                  <div className="text-xs text-muted-foreground md:hidden">Teknisi: {s.assigned_technician_name || "Belum ditugaskan"}</div>
+                </TableCell>
+                <TableCell className="hidden md:table-cell">{s.assigned_technician_name || "Belum ditugaskan"}</TableCell>
                 <TableCell className="hidden lg:table-cell max-w-[220px]">
                   <div className="line-clamp-2 text-sm" title={s.complaint || ""}>{s.complaint || "-"}</div>
                 </TableCell>
                 <TableCell><span className={`status-pill ${STATUS_COLORS[s.status] || ""}`}>{s.status}</span></TableCell>
-                <TableCell><Badge variant="outline" className={paymentStatus(s).className}>{paymentStatus(s).label}</Badge></TableCell>
+                <TableCell><Badge variant="outline" className={getPaymentStatus(s).className}>{getPaymentStatus(s).label}</Badge></TableCell>
                 <TableCell className="hidden lg:table-cell font-mono">{fmtIDR(s.estimated_cost)}</TableCell>
                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{fmtDate(s.created_at)}</TableCell>
                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground">

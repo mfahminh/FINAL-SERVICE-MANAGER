@@ -350,7 +350,7 @@ export async function buildFinalServiceNota(svc, settings) {
 }
 
 export async function buildSparepartsStockReport(items, settings, filters = {}) {
-  const w = widthFor(settings?.printer_nota_width);
+  const w = widthFor("80mm");
   const filterLabels = {
     all: "Semua stok",
     out: "Stok kosong",
@@ -365,39 +365,34 @@ export async function buildSparepartsStockReport(items, settings, filters = {}) 
   };
   const emptyCount = items.filter((item) => Number(item.stock) <= 0).length;
   const lowCount = items.filter((item) => Number(item.stock) > 0 && Number(item.stock) <= Number(item.min_stock || 0)).length;
+  const shortText = (value, maxLength) => {
+    const text = String(value || "-").replace(/\s+/g, " ");
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}~` : text;
+  };
   const chunks = [
     initPrinter(),
-    ...(await printHeader(settings, "service_final", "LAPORAN STOK SPAREPART", w, settings?.printer_nota_width)),
-    kv("Dicetak", fmtDate(new Date().toISOString()), w),
-    kv("Kondisi", filterLabels[filters.stockFilter] || filterLabels.all, w),
-    filters.brand && filters.brand !== "all" ? kv("Merek", filters.brand, w) : new Uint8Array(),
-    filters.search ? kv("Pencarian", filters.search, w) : new Uint8Array(),
-    kv("Urutan", sortLabels[filters.sortBy] || sortLabels.name, w),
+    ...(await printHeader(settings, "service_final", "LAPORAN STOK SPAREPART", w, "80mm")),
+    line(`${items.length} ITEM | ${emptyCount} KOSONG | ${lowCount} MENIPIS`, { bold: true }),
+    line(`${filterLabels[filters.stockFilter] || filterLabels.all}${filters.brand && filters.brand !== "all" ? ` | ${shortText(filters.brand, 20)}` : ""}`),
+    filters.search ? line(`Cari: ${shortText(filters.search, w - 6)}`) : new Uint8Array(),
+    line(`Urut: ${sortLabels[filters.sortBy] || sortLabels.name} | ! = ORDER`),
     separator("-", w),
-    kv("Jumlah item", items.length, w),
-    kv("Stok kosong", emptyCount, w),
-    kv("Stok menipis", lowCount, w),
-    separator("=", w),
+    line(`!${"KODE".padEnd(10)} ${"SPAREPART".padEnd(19)} ${"STK/MIN".padStart(10)}`, { bold: true }),
+    separator("-", w),
   ];
 
   if (items.length === 0) {
-    chunks.push(line("Tidak ada sparepart sesuai filter", { align: 1 }), separator("-", w));
+    chunks.push(line("Tidak ada sparepart sesuai filter"));
   }
 
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     const stock = Number(item.stock) || 0;
     const minStock = Number(item.min_stock) || 0;
-    const status = stock <= 0 ? "KOSONG - ORDER" : stock <= minStock ? "MENIPIS - ORDER" : "CUKUP";
-    chunks.push(
-      line(`${index + 1}. ${item.name || "-"}`, { bold: true }),
-      kv("Merek", item.brand || "-", w),
-      kv("Kode", item.code || "-", w),
-      item.category ? kv("Kategori", item.category, w) : new Uint8Array(),
-      item.location ? kv("Lokasi", item.location, w) : new Uint8Array(),
-      kv("Stok", `${stock}  Min: ${minStock}`, w),
-      line(status, { bold: stock <= minStock }),
-      separator("-", w),
-    );
+    const name = item.brand ? `${item.name || "-"} (${item.brand})` : item.name;
+    const marker = stock <= minStock ? "!" : " ";
+    const stockPair = `${stock}/${minStock}`;
+    const row = `${marker}${shortText(item.code, 10).padEnd(10)} ${shortText(name, 19).padEnd(19)} ${shortText(stockPair, 10).padStart(10)}`;
+    chunks.push(line(row));
   });
 
   chunks.push(feed(3), cutPaper());
