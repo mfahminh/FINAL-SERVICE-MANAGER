@@ -349,6 +349,56 @@ export async function buildFinalServiceNota(svc, settings) {
   return concat(...chunks);
 }
 
+export async function buildSparepartsStockReport(items, settings, filters = {}) {
+  const w = widthFor("80mm");
+  const filterLabels = {
+    all: "Semua stok",
+    out: "Stok kosong",
+    low: "Stok menipis",
+    available: "Stok tersedia",
+  };
+  const sortLabels = {
+    name: "Nama A-Z",
+    brand: "Merek",
+    stock_asc: "Stok terendah",
+    stock_desc: "Stok tertinggi",
+  };
+  const emptyCount = items.filter((item) => Number(item.stock) <= 0).length;
+  const lowCount = items.filter((item) => Number(item.stock) > 0 && Number(item.stock) <= Number(item.min_stock || 0)).length;
+  const shortText = (value, maxLength) => {
+    const text = String(value || "-").replace(/\s+/g, " ");
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}~` : text;
+  };
+  const chunks = [
+    initPrinter(),
+    ...(await printHeader(settings, "service_final", "LAPORAN STOK SPAREPART", w, "80mm")),
+    line(`${items.length} ITEM | ${emptyCount} KOSONG | ${lowCount} MENIPIS`, { bold: true }),
+    line(`${filterLabels[filters.stockFilter] || filterLabels.all}${filters.brand && filters.brand !== "all" ? ` | ${shortText(filters.brand, 20)}` : ""}`),
+    filters.search ? line(`Cari: ${shortText(filters.search, w - 6)}`) : new Uint8Array(),
+    line(`Urut: ${sortLabels[filters.sortBy] || sortLabels.name} | ! = ORDER`),
+    separator("-", w),
+    line(`!${"KODE".padEnd(10)} ${"SPAREPART".padEnd(19)} ${"STK/MIN".padStart(10)}`, { bold: true }),
+    separator("-", w),
+  ];
+
+  if (items.length === 0) {
+    chunks.push(line("Tidak ada sparepart sesuai filter"));
+  }
+
+  items.forEach((item) => {
+    const stock = Number(item.stock) || 0;
+    const minStock = Number(item.min_stock) || 0;
+    const name = item.brand ? `${item.name || "-"} (${item.brand})` : item.name;
+    const marker = stock <= minStock ? "!" : " ";
+    const stockPair = `${stock}/${minStock}`;
+    const row = `${marker}${shortText(item.code, 10).padEnd(10)} ${shortText(name, 19).padEnd(19)} ${shortText(stockPair, 10).padStart(10)}`;
+    chunks.push(line(row));
+  });
+
+  chunks.push(feed(3), cutPaper());
+  return concat(...chunks);
+}
+
 export async function buildPOSReceipt(sale, settings) {
   const w = widthFor(settings?.printer_nota_width);
   const config = getPrintoutConfig(settings, "pos_sale");
