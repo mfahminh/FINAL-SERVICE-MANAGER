@@ -261,6 +261,21 @@ class ServiceCreate(BaseModel):
     dp: float = 0
     photos: List[str] = []
 
+class ServiceUpdate(BaseModel):
+    customer_id: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    imei1: Optional[str] = None
+    imei2: Optional[str] = None
+    color: Optional[str] = None
+    accessories: Optional[List[str]] = None
+    complaint: Optional[str] = None
+    device_password: Optional[str] = None
+    pattern: Optional[str] = None
+    pin: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    dp: Optional[float] = None
+
 class DiagnoseIn(BaseModel):
     diagnosis: str
     damage: str
@@ -612,6 +627,70 @@ async def create_service(data: ServiceCreate, user: dict = Depends(require_roles
     await audit(user, "create", "service", svc["id"], {"service_number": svc["service_number"]})
     asyncio.create_task(notify_service("create", svc["id"]))
     return svc
+
+@api.patch("/services/{sid}")
+async def update_service(sid: str, data: ServiceUpdate, user: dict = Depends(require_roles("owner", "admin", "kasir"))):
+    service = await db.services.find_one({"id": sid})
+    if not service:
+        raise HTTPException(404, "Service tidak ditemukan")
+    if service.get("status") in ("Selesai", "Sudah Diambil") or service.get("assigned_technician_id"):
+        raise HTTPException(400, "Service yang sudah ditugaskan, selesai, atau diambil pelanggan tidak dapat diedit")
+
+    update = data.model_dump(exclude_unset=True)
+    if "customer_id" in update:
+        customer = await db.customers.find_one({"id": update["customer_id"]}, {"_id": 0})
+        if not customer:
+            raise HTTPException(400, "Pelanggan tidak ditemukan")
+        update["customer_name"] = customer["name"]
+        update["customer_phone"] = customer["phone"]
+
+    estimated_cost = update.get("estimated_cost")
+    if estimated_cost is not None:
+        if not math.isfinite(estimated_cost) or estimated_cost < 0:
+            raise HTTPException(400, "Estimasi biaya tidak valid")
+        if not service.get("diagnosis") and not service.get("items_used"):
+            update["service_fee"] = estimated_cost
+            update["final_cost"] = estimated_cost
+
+    dp = update.get("dp")
+    if dp is not None and (not math.isfinite(dp) or dp < 0):
+        raise HTTPException(400, "DP tidak valid")
+
+    update["updated_at"] = now_iso()
+    result = await db.services.update_one(
+        {
+            "id": sid,
+            "status": {"$nin": ["Selesai", "Sudah Diambil"]},
+            "assigned_technician_id": {"$in": [None, ""]},
+        },
+        {"$set": update},
+    )
+    if not result.matched_count:
+        raise HTTPException(400, "Service yang sudah ditugaskan, selesai, atau diambil pelanggan tidak dapat diedit")
+    await audit(user, "update", "service", sid, {"fields": list(data.model_dump(exclude_unset=True))})
+    return await db.services.find_one({"id": sid}, {"_id": 0})
+
+@api.delete("/services/{sid}")
+async def delete_service(sid: str, user: dict = Depends(require_roles("owner", "admin", "kasir"))):
+    service = await db.services.find_one({"id": sid})
+    if not service:
+        raise HTTPException(404, "Service tidak ditemukan")
+    if service.get("status") in ("Selesai", "Sudah Diambil") or service.get("assigned_technician_id"):
+        raise HTTPException(400, "Service yang sudah ditugaskan, selesai, atau diambil pelanggan tidak dapat dihapus")
+    if service.get("items_used") or await db.payments.count_documents({"service_id": sid}):
+        raise HTTPException(400, "Service dengan sparepart atau pembayaran tidak dapat dihapus")
+
+    result = await db.services.delete_one({
+        "id": sid,
+        "status": {"$nin": ["Selesai", "Sudah Diambil"]},
+        "assigned_technician_id": {"$in": [None, ""]},
+        "total_paid": {"$in": [None, 0]},
+        "items_used": {"$in": [None, []]},
+    })
+    if not result.deleted_count:
+        raise HTTPException(400, "Service yang sudah ditugaskan, selesai, diambil, atau memiliki transaksi tidak dapat dihapus")
+    await audit(user, "delete", "service", sid, {"service_number": service.get("service_number")})
+    return {"ok": True}
 
 @api.get("/services/{sid}")
 async def get_service(sid: str, user: dict = Depends(get_current_user)):
