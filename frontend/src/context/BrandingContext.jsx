@@ -40,19 +40,19 @@ function foregroundFor(color) {
   return whiteContrast >= blackContrast ? "0 0% 100%" : "240 10% 4%";
 }
 
-function applyBrandColors(settings) {
+function applyBrandColors(primaryColor, secondaryColor) {
   const root = document.documentElement;
   const colors = [
-    { key: "primary_color", fallback: "#ea7c1f", variable: "--primary", foreground: "--primary-foreground" },
-    { key: "secondary_color", fallback: "#1e293b", variable: "--secondary", foreground: "--secondary-foreground" },
+    { color: primaryColor, fallback: "#ea7c1f", variable: "--primary", foreground: "--primary-foreground", primary: true },
+    { color: secondaryColor, fallback: "#1e293b", variable: "--secondary", foreground: "--secondary-foreground" },
   ];
 
-  colors.forEach(({ key, fallback, variable, foreground }) => {
-    const color = /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(settings[key] || "") ? settings[key] : fallback;
+  colors.forEach(({ color: configuredColor, fallback, variable, foreground, primary }) => {
+    const color = /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(configuredColor || "") ? configuredColor : fallback;
     const hsl = colorToHsl(color);
     root.style.setProperty(variable, hsl);
     root.style.setProperty(foreground, foregroundFor(color));
-    if (key === "primary_color") {
+    if (primary) {
       root.style.setProperty("--ring", hsl);
       root.style.setProperty("--chart-1", hsl);
       root.style.setProperty("--brand-primary", color);
@@ -76,7 +76,7 @@ export function BrandingProvider({ children }) {
 
   useEffect(() => {
     if (settings.app_name) document.title = settings.app_name;
-    applyBrandColors(settings);
+    applyBrandColors(settings.primary_color, settings.secondary_color);
   }, [settings.app_name, settings.primary_color, settings.secondary_color]);
 
   return <BrandingContext.Provider value={{ settings, reload: load }}>{children}</BrandingContext.Provider>;
